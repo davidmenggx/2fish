@@ -1,0 +1,17 @@
+.vs/
+
+out/
+build/
+
+CMakeUserPresets.json
+
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+*.exe
+*.dll
+*.lib
+*.so
+*.dylib
