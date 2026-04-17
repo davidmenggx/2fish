@@ -1,24 +1,107 @@
-﻿cmake_minimum_required (VERSION 3.21)
+﻿cmake_minimum_required(VERSION 3.21)
 
 if (POLICY CMP0141)
-	cmake_policy(SET CMP0141 NEW)
-	set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
+    cmake_policy(SET CMP0141 NEW)
 endif()
 
-project ("2fish" LANGUAGES C CXX)
+project("2fish" LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# debug information
+if(MSVC)
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<CONFIG:Debug,RelWithDebInfo>,EditAndContinue,ProgramDatabase>")
+endif()
+
+include(FetchContent)
+
+FetchContent_Declare(
+    uWebSockets
+    GIT_REPOSITORY https://github.com/uNetworking/uWebSockets.git
+    GIT_TAG v20.77.0
+    GIT_SHALLOW ON
+    GIT_PROGRESS ON
+)
+
+FetchContent_Declare(
+    zlib
+    GIT_REPOSITORY https://github.com/madler/zlib.git
+    GIT_TAG v1.3.2
+    GIT_SHALLOW ON
+    GIT_PROGRESS ON
+)
+
+FetchContent_Declare(
+    libuv
+    GIT_REPOSITORY https://github.com/libuv/libuv.git
+    GIT_TAG v1.49.2
+    GIT_SHALLOW ON
+    GIT_PROGRESS ON
+)
+
+FetchContent_MakeAvailable(uWebSockets zlib libuv)
+
+if(NOT TARGET ZLIB::ZLIB)
+    add_library(ZLIB::ZLIB ALIAS zlib)
+endif()
+
+find_package(Threads REQUIRED)
+
+set(USOCKETS_EVENTING
+    "${uwebsockets_SOURCE_DIR}/uSockets/src/eventing/libuv.c"
+)
+
+file(GLOB USOCKETS_SOURCES
+    "${uwebsockets_SOURCE_DIR}/uSockets/src/*.c"
+    "${uwebsockets_SOURCE_DIR}/uSockets/src/crypto/*.c"
+)
+
+add_library(uSockets STATIC ${USOCKETS_SOURCES} ${USOCKETS_EVENTING})
+
+target_compile_definitions(uSockets PUBLIC
+    LIBUS_NO_SSL
+    LIBUS_USE_LIBUV
+)
+
+target_include_directories(uSockets PUBLIC
+    "${uwebsockets_SOURCE_DIR}/uSockets/src"
+    "${libuv_SOURCE_DIR}/include"
+)
+
+target_link_libraries(uSockets PUBLIC
+    Threads::Threads
+    ZLIB::ZLIB
+    uv_a
+)
+
+if(WIN32)
+    target_link_libraries(uSockets PUBLIC ws2_32 iphlpapi)
+endif()
+
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS "include/*.h")
 
-add_executable (2fish ${SOURCES} ${HEADERS})
+add_executable(2fish ${SOURCES} ${HEADERS})
 
-# add profiling tools on MSVC
-target_link_options(2fish PRIVATE $<$<CONFIG:RelWithDebInfo>:/PROFILE>)
+target_link_libraries(2fish PRIVATE
+    uSockets
+    Threads::Threads
+    ZLIB::ZLIB
+)
 
-target_include_directories(2fish PRIVATE include)
+target_include_directories(2fish PRIVATE
+    include
+    "${uwebsockets_SOURCE_DIR}/src"
+    "${uwebsockets_SOURCE_DIR}/uSockets/src"
+    "${zlib_SOURCE_DIR}"
+    "${zlib_BINARY_DIR}"
+)
 
-set_property(TARGET 2fish PROPERTY CXX_STANDARD 20)
+if(WIN32)
+    target_link_libraries(2fish PRIVATE ws2_32 iphlpapi)
+    if(MSVC)
+        target_link_options(2fish PRIVATE $<$<CONFIG:RelWithDebInfo>:/PROFILE>)
+    endif()
+endif()
