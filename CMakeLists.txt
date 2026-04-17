@@ -10,12 +10,16 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# debug information
+# Debug information
 if(MSVC)
     set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<CONFIG:Debug,RelWithDebInfo>,EditAndContinue,ProgramDatabase>")
 endif()
 
 include(FetchContent)
+
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(LIBUV_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LIBUV_BUILD_BENCH OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
     uWebSockets
@@ -44,7 +48,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(uWebSockets zlib libuv)
 
 if(NOT TARGET ZLIB::ZLIB)
-    add_library(ZLIB::ZLIB ALIAS zlib)
+    add_library(ZLIB::ZLIB ALIAS zlibstatic) 
 endif()
 
 find_package(Threads REQUIRED)
@@ -55,7 +59,6 @@ set(USOCKETS_EVENTING
 
 file(GLOB USOCKETS_SOURCES
     "${uwebsockets_SOURCE_DIR}/uSockets/src/*.c"
-    "${uwebsockets_SOURCE_DIR}/uSockets/src/crypto/*.c"
 )
 
 add_library(uSockets STATIC ${USOCKETS_SOURCES} ${USOCKETS_EVENTING})
@@ -66,6 +69,7 @@ target_compile_definitions(uSockets PUBLIC
 )
 
 target_include_directories(uSockets PUBLIC
+    "${uwebsockets_SOURCE_DIR}/src"
     "${uwebsockets_SOURCE_DIR}/uSockets/src"
     "${libuv_SOURCE_DIR}/include"
 )
@@ -76,32 +80,15 @@ target_link_libraries(uSockets PUBLIC
     uv_a
 )
 
-if(WIN32)
-    target_link_libraries(uSockets PUBLIC ws2_32 iphlpapi)
-endif()
-
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS "include/*.h")
 
 add_executable(2fish ${SOURCES} ${HEADERS})
 
-target_link_libraries(2fish PRIVATE
-    uSockets
-    Threads::Threads
-    ZLIB::ZLIB
-)
+target_include_directories(2fish PRIVATE include)
 
-target_include_directories(2fish PRIVATE
-    include
-    "${uwebsockets_SOURCE_DIR}/src"
-    "${uwebsockets_SOURCE_DIR}/uSockets/src"
-    "${zlib_SOURCE_DIR}"
-    "${zlib_BINARY_DIR}"
-)
+target_link_libraries(2fish PRIVATE uSockets)
 
-if(WIN32)
-    target_link_libraries(2fish PRIVATE ws2_32 iphlpapi)
-    if(MSVC)
-        target_link_options(2fish PRIVATE $<$<CONFIG:RelWithDebInfo>:/PROFILE>)
-    endif()
+if(WIN32 AND MSVC)
+    target_link_options(2fish PRIVATE $<$<CONFIG:RelWithDebInfo>:/PROFILE>)
 endif()
