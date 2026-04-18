@@ -49,7 +49,7 @@ int main() {
 		std::cout << std::format("Connected to wss://{}{}\n\n", host, path);
 
 		// hard coded for now, test market
-		std::string payload{ R"({"assets_ids": ["77893140510362582253172593084218413010407941075415081594586195705930819989216"], "type": "market"})" };
+		std::string payload{ R"({"assets_ids": ["77893140510362582253172593084218413010407941075415081594586195705930819989216"], "type": "market", "level": 3})" };
 
 		ws.text(true);
 		ws.write(net::buffer(payload));
