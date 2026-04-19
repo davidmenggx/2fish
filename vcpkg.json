@@ -1,10 +1,10 @@
 {
   "name": "2fish",
-  "version": "1.0.0",
   "dependencies": [
     "boost-beast",
     "boost-system",
     "boost-filesystem",
-    "openssl"
+    "openssl",
+    "simdjson"
   ]
 }

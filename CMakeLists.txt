@@ -23,6 +23,8 @@ find_package(Boost REQUIRED COMPONENTS system filesystem)
 set(OPENSSL_USE_STATIC_LIBS ON)
 find_package(OpenSSL REQUIRED)
 
+find_package(simdjson REQUIRED)
+
 add_subdirectory(src)
 
 option(BUILD_TESTING "Build the tests" ON)
