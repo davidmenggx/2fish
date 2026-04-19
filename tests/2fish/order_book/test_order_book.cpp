@@ -26,7 +26,37 @@ TEST(OrderBookTest, TestValidSnapshot) {
 	EXPECT_EQ(book.getSize(market::Side::kSell, 67), 0);
 }
 
-TEST(OrderBookTest, TestInvalidSnapshot) {
+TEST(OrderBookTest, TestValidDiff) {
+	market::OrderBook book{};
+
+	market::OrderBookDiff diff{};
+
+	market::OrderLevelDelta d1{
+		.price_ = 34,
+		.size_ = 10'000,
+		.side_ = market::Side::kBuy,
+		.best_bid_ = 34,
+		.best_ask_ = 38
+	};
+
+	market::OrderLevelDelta d2{
+		.price_ = 66,
+		.size_ = 50'000,
+		.side_ = market::Side::kSell,
+		.best_bid_ = 66,
+		.best_ask_ = 62
+	};
+
+	diff.deltas_.push_back(d1);
+	diff.deltas_.push_back(d2);
+
+	book.applyDiff(diff);
+
+	EXPECT_EQ(book.getSize(market::Side::kBuy, 34), 10'000);
+	EXPECT_EQ(book.getSize(market::Side::kSell, 66), 50'000);
+}
+
+TEST(OrderBookTest, TestInvalidRead) {
 	market::OrderBook book{};
 
 	market::OrderBookSnapshot snap{};
