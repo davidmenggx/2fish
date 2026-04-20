@@ -4,17 +4,27 @@
 
 #include "moodycamel/readerwriterqueue.h"
 
+#include <atomic>
+#include <thread>
+
 namespace market {
 	class WebsocketClient {
 	public:
 		WebsocketClient(NetworkBufferPool& buffer_pool, 
-			moodycamel::ReaderWriterQueue<MessageBuffer>& market_queue);
+			moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
+			std::atomic<bool>& running);
 
-		// TODO: your job is to enqueue messages to the market queue after reading them
+		void start();
 
 	private:
+		void run();
+
 		NetworkBufferPool& buffer_pool_;
 
-		moodycamel::ReaderWriterQueue<MessageBuffer>& market_queue_;
+		moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue_;
+
+		std::atomic<bool>& running_;
+
+		std::jthread thread_;
 	};
 }

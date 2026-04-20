@@ -2,8 +2,9 @@
 
 #include <simdjson.h>
 
-market::OrderBookManager::OrderBookManager(moodycamel::ReaderWriterQueue<MessageBuffer>& market_queue)
-	: market_queue_{ market_queue }
+market::OrderBookManager::OrderBookManager(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
+	std::atomic<bool>& running)
+	: market_queue_{ market_queue }, running_{ running }
 {
 }
 

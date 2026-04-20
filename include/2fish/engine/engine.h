@@ -6,16 +6,22 @@
 
 #include "moodycamel/readerwriterqueue.h"
 
+#include <atomic>
+
 namespace market {
 	class Engine {
 	public:
-		// TODO
+		Engine();
+
+		void start();
+
 	private:
+		NetworkBufferPool buffer_pool_{};
+		moodycamel::ReaderWriterQueue<MessageBuffer*> market_queue_{};
+
+		std::atomic<bool> running_{ false };
+
 		WebsocketClient client_;
 		OrderBookManager books_;
-
-		NetworkBufferPool buffer_pool_{};
-
-		moodycamel::ReaderWriterQueue<MessageBuffer> market_queue_{};
 	};
 }
