@@ -1,21 +1,21 @@
 #pragma once
 
-#include "moodycamel/readerwriterqueue.h"
-
+#include "2fish/network/network_buffer_pool.h"
 #include "2fish/network/websocket_client.h"
-#include "2fish/order_book/book_manager.h"
-#include "2fish/parser/parser.h"
+#include "2fish/order_book/order_book_manager.h"
+
+#include "moodycamel/readerwriterqueue.h"
 
 namespace market {
 	class Engine {
 	public:
 		// TODO
 	private:
-		WebsocketClient client_{};
-		Parser parser_{};
-		BookManager books_{};
+		WebsocketClient client_;
+		OrderBookManager books_;
 
-		moodycamel::ReaderWriterQueue parser_queue_{};
-		moodycamel::ReaderWriterQueue book_queue_{};
+		NetworkBufferPool buffer_pool_{};
+
+		moodycamel::ReaderWriterQueue<MessageBuffer> market_queue_{};
 	};
 }

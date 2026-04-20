@@ -6,6 +6,7 @@
 #include <boost/beast/websocket.hpp>
 #include <openssl/ssl.h>
 
+#include <algorithm>
 #include <exception>
 #include <format>
 #include <iostream>
@@ -57,11 +58,18 @@ int main() {
 		std::cout << std::format("Sent subscription to wss://{}{}\n\n", host, path);
 
 		beast::flat_buffer buffer{};
+
+		std::size_t max_size{};
+
 		while (true) {
 			ws.read(buffer);
 
 			// for some reason std format doesn't like beast::make_printable...
-			std::cout << "Received: " << beast::make_printable(buffer.data()) << "\n\n";
+			// std::cout << "Received: " << beast::make_printable(buffer.data()) << "\n\n";
+
+			max_size = std::max(max_size, buffer.size());
+
+			std::cout << "Max message size so far: " << max_size << '\n';
 
 			buffer.clear();
 		}
