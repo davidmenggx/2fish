@@ -1,5 +1,5 @@
-#include "2fish/models/order_book_diff.h"
-#include "2fish/models/order_book_snapshot.h"
+#include "2fish/models/price_change.h"
+#include "2fish/models/book_snapshot.h"
 #include "2fish/order_book/order_book.h"
 
 #include <chrono>
@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <utility>
 
-void market::OrderBook::applyDiff(market::OrderBookDiff diff) {
+void market::OrderBook::applyDiff(market::PriceChange diff) {
 	for (const auto& delta : diff.deltas_) {
 		if (delta.side_ == market::Side::kBuy) {
 			bids_[delta.price_] = delta.size_;
@@ -27,7 +27,7 @@ void market::OrderBook::applyDiff(market::OrderBookDiff diff) {
 	last_updated_ = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 }
 
-void market::OrderBook::applySnapshot(market::OrderBookSnapshot snapshot) {
+void market::OrderBook::applySnapshot(market::BookSnapshot snapshot) {
 	bids_ = std::move(snapshot.bids_);
 	asks_ = std::move(snapshot.asks_);
 

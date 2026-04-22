@@ -4,7 +4,7 @@
 #include <cstdint>
 
 namespace market {
-	struct OrderBookSnapshot {
+	struct BookSnapshot {
 		uint64_t asset_id_{};
 		std::array<uint64_t, 101> bids_{};
 		std::array<uint64_t, 101> asks_{};

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "2fish/models/order_book_diff.h"
-#include "2fish/models/order_book_snapshot.h"
+#include "2fish/models/book_snapshot.h"
+#include "2fish/models/price_change.h"
 
 #include <array>
 #include <cstdint>
@@ -11,9 +11,9 @@ namespace market {
 	public:
 		explicit OrderBook() = default;
 
-		void applySnapshot(OrderBookSnapshot snapshot);
+		void applySnapshot(BookSnapshot snapshot);
 
-		void applyDiff(OrderBookDiff diff);
+		void applyDiff(PriceChange diff);
 
 		uint64_t getSize(Side side, int price);
 

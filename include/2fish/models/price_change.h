@@ -14,7 +14,7 @@ namespace market {
 		int best_ask_{}; // cents
 	};
 
-	struct OrderBookDiff {
+	struct PriceChange {
 		uint64_t asset_id_{};
 		std::vector<OrderLevelDelta> deltas_{};
 		uint64_t timestamp_{}; // milliseconds

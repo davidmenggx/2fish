@@ -1,8 +1,11 @@
 #include "2fish/engine/engine.h"
 
+#include <chrono>
+#include <thread>
+
 market::Engine::Engine() 
-	: client_{ buffer_pool_, market_queue_, running_ }
-	, books_{ market_queue_, running_ }
+	: client_{ market_queue_, buffer_pool_, running_ }
+	, books_{ market_queue_, buffer_pool_, running_ }
 {
 }
 
@@ -11,5 +14,10 @@ void market::Engine::start() {
 
 	client_.start();
 
-	// TODO: start the book too!
+	books_.start();
+
+	using namespace std::chrono_literals;
+	std::this_thread::sleep_for(100s);
+
+	running_.store(false);
 }

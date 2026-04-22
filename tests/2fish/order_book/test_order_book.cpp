@@ -1,5 +1,5 @@
-#include "2fish/models/order_book_diff.h"
-#include "2fish/models/order_book_snapshot.h"
+#include "2fish/models/price_change.h"
+#include "2fish/models/book_snapshot.h"
 #include "2fish/order_book/order_book.h"
 
 #include <gtest/gtest.h>
@@ -9,7 +9,7 @@
 TEST(OrderBookTest, TestValidSnapshot) {
 	market::OrderBook book{};
 
-	market::OrderBookSnapshot snap{};
+	market::BookSnapshot snap{};
 	
 	snap.bids_[50] = 1000;
 	snap.bids_[25] = 900;
@@ -29,7 +29,7 @@ TEST(OrderBookTest, TestValidSnapshot) {
 TEST(OrderBookTest, TestValidDiff) {
 	market::OrderBook book{};
 
-	market::OrderBookDiff diff{};
+	market::PriceChange diff{};
 
 	market::OrderLevelDelta d1{
 		.price_ = 34,
@@ -59,7 +59,7 @@ TEST(OrderBookTest, TestValidDiff) {
 TEST(OrderBookTest, TestInvalidRead) {
 	market::OrderBook book{};
 
-	market::OrderBookSnapshot snap{};
+	market::BookSnapshot snap{};
 	book.applySnapshot(snap);
 
 	EXPECT_THROW(book.getSize(market::Side::kBuy, -1), std::invalid_argument);
