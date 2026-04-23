@@ -1,32 +1,47 @@
+#include "2fish/engine/market_engine.h"
 #include "2fish/models/event_type.h"
+#include "2fish/models/price_change.h"
 #include "2fish/network/network_buffer_pool.h"
-#include "2fish/order_book/order_book_manager.h"
+#include "2fish/order_book/order_book.h"
 
 #include "moodycamel/readerwriterqueue.h"
 
 #include <simdjson.h>
 
 #include <atomic>
+#include <charconv>
+#include <cstdint>
+#include <string_view>
+#include <system_error>
 #include <thread>
 
 #include <format>
 #include <iostream>
-#include <string_view>
+#include <string>
 
 #include <intrin0.inl.h>
 
-market::OrderBookManager::OrderBookManager(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
+market::MarketEngine::MarketEngine(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
 	NetworkBufferPool& buffer_pool, std::atomic<bool>& running)
 	: market_queue_{ market_queue }, buffer_pool_{ buffer_pool }, running_{ running }
 {
 	price_change_buffer_.deltas_.reserve(10);
+
+	// right now i am hard coding an asset id corresponding to what i know the
+	// real asset id is. in theory we should fetch this id from a rest api
+	std::string crazy_id{ R"("77893140510362582253172593084218413010407941075415081594586195705930819989216")" };
+	uint64_t asset_hash{ std::hash<std::string>{}(crazy_id) };
+	
+	books_[asset_hash] = market::OrderBook{};
+
+	std::cout << "Created order book corresponding to asset id hash " << asset_hash << '\n';
 }
 
-void market::OrderBookManager::start() {
-	thread_ = std::jthread(&market::OrderBookManager::run, this);
+void market::MarketEngine::start() {
+	thread_ = std::jthread(&market::MarketEngine::run, this);
 }
 
-void market::OrderBookManager::run() {
+void market::MarketEngine::run() {
 	market::MessageBuffer* message{};
 	while (running_) {
 		if (!market_queue_.try_dequeue(message)) {
@@ -44,7 +59,7 @@ void market::OrderBookManager::run() {
 	std::cout << "Stop message received, order book manager stopping\n";
 }
 
-void market::OrderBookManager::parseAndApplyUpdate(market::MessageBuffer* message) {
+void market::MarketEngine::parseAndApplyUpdate(market::MessageBuffer* message) {
 	// simdjson expects a certain amount of padding for safe simd parsing
 	simdjson::padded_string_view psv(
 		reinterpret_cast<const char*>(message->data_),
@@ -73,67 +88,148 @@ void market::OrderBookManager::parseAndApplyUpdate(market::MessageBuffer* messag
 		root = doc.get_object();
 	}
 
-	for (auto field : root) {
-		auto key_res = field.unescaped_key();
+	// reset the state between parses
+	event_type_ = market::EventType::kUnknown;
+	book_snapshot_buffer_.asks_.fill(0);
+	book_snapshot_buffer_.bids_.fill(0);
+	price_change_buffer_.deltas_.clear();
 
-		if (key_res.error()) { 
+	// speculatively build/prepare the schemas to be sent to the order book 
+	for (auto field : root) {
+		auto raw_key = field.unescaped_key();
+
+		if (raw_key.error()) {
 			std::cerr << "Could not parse key in JSON field, skipping!\n";
 		}
 
-		std::string_view key{ key_res.value() };
+		std::string_view key{ raw_key.value() };
 
 		simdjson::ondemand::value val{ field.value() };
 
 		if (key == "event_type") {
 			event_type_ = market::stringToEventType(val.get_string().value());
 		}
+		else if (key == "asset_id") {
+			std::string_view raw_asset_id{ val.raw_json() };
+			asset_id_ = std::hash<std::string_view>{}(raw_asset_id);
+			std::cout << "Populated asset id!\n";
+		}
+		else if (key == "timestamp") {
+			uint64_t timestamp{};
+			std::string_view raw_timestamp{ val.get_string().value() };
+
+			auto [ptr, ec] = std::from_chars(raw_timestamp.data(), raw_timestamp.data() + raw_timestamp.size(),
+				timestamp);
+
+			if (ec == std::errc()) {
+				book_snapshot_buffer_.timestamp_ = timestamp;
+				price_change_buffer_.timestamp_ = timestamp;
+
+				std::cout << std::format("Populated timestamp with time {}\n", timestamp);
+			}
+		}
+		else if (key == "bids" && val.type() == simdjson::ondemand::json_type::array) {
+			simdjson::ondemand::array bids_arr{ val.get_array() };
+			for (simdjson::ondemand::object bid : bids_arr) {
+				std::string_view raw_price{ bid["price"].get_string().value() };
+				float bid_price{};
+				auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), bid_price);
+				bid_price *= 100; // in cents
+
+				std::string_view raw_size{ bid["size"].get_string().value() };
+				long double bid_size{};
+				auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), bid_size);
+
+				if (ec1 == std::errc() && ec2 == std::errc()) {
+					// success path
+					book_snapshot_buffer_.asks_[static_cast<int>(bid_price)] = bid_size;
+				}
+				else {
+					std::cerr << "Could not parse ask, did not update book\n";
+				}
+			}
+			std::cout << "Populated bids!\n";
+		}
+		else if (key == "asks" && val.type() == simdjson::ondemand::json_type::array) {
+			simdjson::ondemand::array asks_arr{ val.get_array() };
+			for (simdjson::ondemand::object ask : asks_arr) {
+				std::string_view raw_price{ ask["price"].get_string().value() };
+				float ask_price{};
+				auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), ask_price);
+				ask_price *= 100; // in cents
+
+				std::string_view raw_size{ ask["size"].get_string().value() };
+				long double ask_size{};
+				auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), ask_size);
+
+				if (ec1 == std::errc() && ec2 == std::errc()) {
+					// success path
+					book_snapshot_buffer_.asks_[static_cast<int>(ask_price)] = ask_size;
+				}
+				else {
+					std::cerr << "Could not parse ask, did not update book\n";
+					continue;
+				}
+			}
+			std::cout << "Populated asks!\n";
+		}
+		else if (key == "price_changes" && val.type() == simdjson::ondemand::json_type::array) {
+			simdjson::ondemand::array price_change_arr{ val.get_array() };
+			for (simdjson::ondemand::object price_change : price_change_arr) {
+				std::string_view raw_price{ price_change["price"].get_string().value() };
+				float price{};
+				auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), price);
+				price *= 100; // in cents
+
+				std::string_view raw_size{ price_change["size"].get_string().value() };
+				long double size{};
+				auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), size);
+
+				std::string_view raw_side{ price_change["side"].get_string().value() };
+				market::Side side = (raw_side == "BUY") ? market::Side::kBuy : market::Side::kSell;
+
+				std::string_view raw_best_bid{ price_change["best_bid"].get_string().value() };
+				float best_bid{};
+				auto [ptr3, ec3] = std::from_chars(raw_best_bid.data(), raw_best_bid.data() + raw_best_bid.size(), best_bid);
+				best_bid *= 100; // in cents
+
+				std::string_view raw_best_ask{ price_change["best_ask"].get_string().value() };
+				float best_ask{};
+				auto [ptr4, ec4] = std::from_chars(raw_best_ask.data(), raw_best_ask.data() + raw_best_ask.size(), best_ask);
+				best_ask *= 100; // in cents
+
+				price_change_buffer_.deltas_.emplace_back(
+					market::OrderLevelDelta{
+					.price_ = static_cast<int>(price),
+					.size_ = size,
+					.side_ = side,
+					.best_bid_ = static_cast<int>(best_bid),
+					.best_ask_ = static_cast<int>(best_ask)
+					}
+				);
+			}
+		}
+		// TODO: for now i am just visualizing liquidity, but at some point I should
+		// visualize trades as well, so we need to capture the last_trade_price message
 	}
 
-	std::cout << "Got event type: ";
-	if (event_type_ == market::EventType::kBookSnapshot) {
-		std::cout << "book" << '\n';
-	}
-	else if (event_type_ == market::EventType::kPriceChange) {
-		std::cout << "price change" << '\n';
-	}
-	else {
-		std::cout << "something else\n";
-	}
-
-
-
-#if 0
-	simdjson::ondemand::value raw_event_type;
-	auto error = doc.find_field_unordered("event_type").get(raw_event_type);
-
-	if (error == simdjson::NO_SUCH_FIELD) {
-		// TODO: figure out a long term way of handling these errors
-		std::cerr << "Could not find event_type field in json payload, dropping\n";
+	if (!books_.contains(asset_id_)) {
+		std::cerr << "CRITICAL: Could not find matching orderbook with specified asset_id, dropping\n";
+		std::cerr << "Asset id was " << asset_id_ << '\n';
 		return;
 	}
-	else if (error) {
-		std::cerr << "Unexpected error occured when parsing event_type: " << error << '\n';
+
+	switch (event_type_) {
+	case EventType::kUnknown:
+		std::cerr << "CRITICAL: Failed to find event_type in json payload, dropping message\n";
 		return;
+	case EventType::kBookSnapshot:
+		books_[asset_id_].applySnapshot(book_snapshot_buffer_);
+		std::cout << "Applied a snapshot!\n";
+		break;
+	case EventType::kPriceChange:
+		books_[asset_id_].applyPriceChange(price_change_buffer_);
+		std::cout << "Applied a price change!\n";
+		break;
 	}
-
-	// Unfortunately the schema for Polymarket’s websocket API is not consistent: 
-	// the event_type field is not in the same position (top of message) for all 
-	// message types. Sadly simdjson expects a forward only stream.
-	// So we pay a small performance hit to rewind the message
-	doc.rewind();
-
-	std::string_view event_str;
-	error = raw_event_type.get(event_str);
-
-	if (error) {
-		std::cerr << "Could not convert raw event type to string view, dropping\n";
-		return;
-	}
-
-	market::EventType event_type{ stringToEventType(event_str) };
-
-	std::cout << std::format("Received message of type: {}\n", event_str);
-
-	// TODO: convert the above eventtype parsing code to a static helper function in this file
-#endif
 }

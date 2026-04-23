@@ -5,9 +5,8 @@
 
 namespace market {
 	struct BookSnapshot {
-		uint64_t asset_id_{};
-		std::array<uint64_t, 101> bids_{};
-		std::array<uint64_t, 101> asks_{};
+		std::array<long double, 101> bids_{};
+		std::array<long double, 101> asks_{};
 		uint64_t timestamp_{}; // milliseconds
 	};
 }

@@ -6,9 +6,8 @@
 #include <cstdint>
 #include <format>
 #include <stdexcept>
-#include <utility>
 
-void market::OrderBook::applyDiff(market::PriceChange diff) {
+void market::OrderBook::applyPriceChange(market::PriceChange& diff) {
 	for (const auto& delta : diff.deltas_) {
 		if (delta.side_ == market::Side::kBuy) {
 			bids_[delta.price_] = delta.size_;
@@ -27,9 +26,9 @@ void market::OrderBook::applyDiff(market::PriceChange diff) {
 	last_updated_ = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 }
 
-void market::OrderBook::applySnapshot(market::BookSnapshot snapshot) {
-	bids_ = std::move(snapshot.bids_);
-	asks_ = std::move(snapshot.asks_);
+void market::OrderBook::applySnapshot(market::BookSnapshot& snapshot) {
+	bids_ = snapshot.bids_;
+	asks_ = snapshot.asks_;
 
 	last_message_ = snapshot.timestamp_;
 

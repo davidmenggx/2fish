@@ -8,14 +8,13 @@ namespace market {
 
 	struct OrderLevelDelta {
 		int price_{}; // cents
-		uint64_t size_{};
+		long double size_{};
 		Side side_{};
 		int best_bid_{}; // cents
 		int best_ask_{}; // cents
 	};
 
 	struct PriceChange {
-		uint64_t asset_id_{};
 		std::vector<OrderLevelDelta> deltas_{};
 		uint64_t timestamp_{}; // milliseconds
 	};

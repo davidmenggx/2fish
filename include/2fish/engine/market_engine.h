@@ -10,19 +10,16 @@
 
 #include <simdjson.h>
 
-#include <array>
 #include <atomic>
 #include <cstdint>
-#include <string_view>
 #include <thread>
 #include <unordered_map>
-#include <vector>
 
 namespace market {
-	class OrderBookManager {
+	class MarketEngine {
 	public:
 		// TODO: make sure this supports multiple order books, or at least validate the one order book
-		OrderBookManager(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
+		MarketEngine(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
 			NetworkBufferPool& buffer_pool, std::atomic<bool>& running);
 
 		void start();
@@ -45,6 +42,7 @@ namespace market {
 		// own and reuse the following objects to send to the order book without
 		// excessive allocations
 		market::EventType event_type_{};
+		uint64_t asset_id_{};
 		market::BookSnapshot book_snapshot_buffer_{};
 		market::PriceChange price_change_buffer_{};
 

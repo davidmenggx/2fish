@@ -50,7 +50,7 @@ TEST(OrderBookTest, TestValidDiff) {
 	diff.deltas_.push_back(d1);
 	diff.deltas_.push_back(d2);
 
-	book.applyDiff(diff);
+	book.applyPriceChange(diff);
 
 	EXPECT_EQ(book.getSize(market::Side::kBuy, 34), 10'000);
 	EXPECT_EQ(book.getSize(market::Side::kSell, 66), 50'000);
