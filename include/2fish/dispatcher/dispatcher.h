@@ -16,10 +16,10 @@
 #include <unordered_map>
 
 namespace market {
-	class MarketEngine {
+	class Dispatcher {
 	public:
 		// TODO: make sure this supports multiple order books, or at least validate the one order book
-		MarketEngine(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
+		Dispatcher(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
 			NetworkBufferPool& buffer_pool, std::atomic<bool>& running);
 
 		void start();
@@ -27,10 +27,9 @@ namespace market {
 	private:
 		void run();
 
-		void parseAndApplyUpdate(MessageBuffer* message);
+		void parseAndApplyUpdates(MessageBuffer* message);
 
-		// maps the asset id to the order book
-		std::unordered_map<uint64_t, OrderBook> books_{};
+		OrderBook book_{};
 		moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue_;
 
 		market::NetworkBufferPool& buffer_pool_;
@@ -45,6 +44,15 @@ namespace market {
 		uint64_t asset_id_{};
 		market::BookSnapshot book_snapshot_buffer_{};
 		market::PriceChange price_change_buffer_{};
+
+		// for now i am just supporting one order book (asset_id) at a time.
+		// but price_change messages can contain multiple asset_ids, usually
+		// corresponding to the yes/no markets. to verify we are capturing the
+		// correct market, hard match the asset id hash
+		
+		// TODO: make this an argument that is passed in when creating the engine
+		// In fact, this needs to be owned by the engine
+		uint64_t target_asset_id_hash_{};
 
 		std::jthread thread_{};
 	};

@@ -114,7 +114,7 @@ void market::WebsocketClient::run() {
 		market_queue_.enqueue(buffer);
 
 		// TODO: figure out logging
-		std::cout << std::format("Enqueued message of {} bytes\n", buffer->message_size_);
+		// std::cout << std::format("Enqueued message of {} bytes\n", buffer->message_size_);
 	}
 
 	std::cout << "Stop message received, websocket client stopping\n";

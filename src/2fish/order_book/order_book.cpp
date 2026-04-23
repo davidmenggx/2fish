@@ -16,6 +16,9 @@ void market::OrderBook::applyPriceChange(market::PriceChange& diff) {
 			asks_[delta.price_] = delta.size_;
 		}
 
+		best_bid_ = delta.best_bid_;
+		best_ask_ = delta.best_ask_;
+
 		// TODO: verify that the top of book is as expected
 	}
 
@@ -29,6 +32,25 @@ void market::OrderBook::applyPriceChange(market::PriceChange& diff) {
 void market::OrderBook::applySnapshot(market::BookSnapshot& snapshot) {
 	bids_ = snapshot.bids_;
 	asks_ = snapshot.asks_;
+
+	// when a snapshot occurs, the entire book is changed
+	// to match. so we the best bid and ask are reset as well
+    best_bid_ = 0;
+    best_ask_ = 100;
+
+	for (int i{ 100 }; i >= 0; --i) {
+        if (bids_[i] != 0.0) {
+            best_bid_ = i;
+            break;
+        }
+    }
+
+	for (int i{ 0 }; i < 101; ++i) {
+        if (asks_[i] != 0.0) {
+            best_ask_ = i;
+            break;
+        }
+    }
 
 	last_message_ = snapshot.timestamp_;
 

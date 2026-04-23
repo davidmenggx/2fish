@@ -1,8 +1,8 @@
 #pragma once
 
+#include "2fish/dispatcher/dispatcher.h"
 #include "2fish/network/network_buffer_pool.h"
 #include "2fish/network/websocket_client.h"
-#include "2fish/engine/market_engine.h"
 
 #include "moodycamel/readerwriterqueue.h"
 
@@ -22,6 +22,6 @@ namespace market {
 		std::atomic<bool> running_{ false };
 
 		WebsocketClient client_;
-		MarketEngine market_engine_;
+		Dispatcher market_engine_;
 	};
 }

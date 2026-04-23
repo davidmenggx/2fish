@@ -1,4 +1,4 @@
-#include "2fish/engine/market_engine.h"
+#include "2fish/dispatcher/dispatcher.h"
 #include "2fish/models/event_type.h"
 #include "2fish/models/price_change.h"
 #include "2fish/network/network_buffer_pool.h"
@@ -21,27 +21,21 @@
 
 #include <intrin0.inl.h>
 
-market::MarketEngine::MarketEngine(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
+market::Dispatcher::Dispatcher(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
 	NetworkBufferPool& buffer_pool, std::atomic<bool>& running)
 	: market_queue_{ market_queue }, buffer_pool_{ buffer_pool }, running_{ running }
 {
 	price_change_buffer_.deltas_.reserve(10);
 
-	// right now i am hard coding an asset id corresponding to what i know the
-	// real asset id is. in theory we should fetch this id from a rest api
-	std::string crazy_id{ R"("77893140510362582253172593084218413010407941075415081594586195705930819989216")" };
-	uint64_t asset_hash{ std::hash<std::string>{}(crazy_id) };
-	
-	books_[asset_hash] = market::OrderBook{};
-
-	std::cout << "Created order book corresponding to asset id hash " << asset_hash << '\n';
+	std::string_view target_asset_id_raw = "77893140510362582253172593084218413010407941075415081594586195705930819989216";
+	target_asset_id_hash_ = std::hash<std::string_view>{}(target_asset_id_raw);
 }
 
-void market::MarketEngine::start() {
-	thread_ = std::jthread(&market::MarketEngine::run, this);
+void market::Dispatcher::start() {
+	thread_ = std::jthread(&market::Dispatcher::run, this);
 }
 
-void market::MarketEngine::run() {
+void market::Dispatcher::run() {
 	market::MessageBuffer* message{};
 	while (running_) {
 		if (!market_queue_.try_dequeue(message)) {
@@ -49,17 +43,18 @@ void market::MarketEngine::run() {
 			continue;
 		}
 
-		std::cout << std::format("Message of {} bytes received, parsing\n", message->message_size_);
-
-		parseAndApplyUpdate(message);
+		parseAndApplyUpdates(message);
 
 		buffer_pool_.release(message);
+
+		// TODO: a function that hits every few iterations which results in a renderer update,
+		// triggered by an internal snapshot + buffer switch
 	}
 
 	std::cout << "Stop message received, order book manager stopping\n";
 }
 
-void market::MarketEngine::parseAndApplyUpdate(market::MessageBuffer* message) {
+void market::Dispatcher::parseAndApplyUpdates(market::MessageBuffer* message) {
 	// simdjson expects a certain amount of padding for safe simd parsing
 	simdjson::padded_string_view psv(
 		reinterpret_cast<const char*>(message->data_),
@@ -79,7 +74,6 @@ void market::MarketEngine::parseAndApplyUpdate(market::MessageBuffer* message) {
 		auto first_element = arr.at(0);
 
 		if (first_element.error()) {
-			std::cerr << "Array-type message contains no object, dropping!\n";
 			return;
 		}
 		root = first_element.get_object();
@@ -99,7 +93,7 @@ void market::MarketEngine::parseAndApplyUpdate(market::MessageBuffer* message) {
 		auto raw_key = field.unescaped_key();
 
 		if (raw_key.error()) {
-			std::cerr << "Could not parse key in JSON field, skipping!\n";
+			continue;
 		}
 
 		std::string_view key{ raw_key.value() };
@@ -110,13 +104,12 @@ void market::MarketEngine::parseAndApplyUpdate(market::MessageBuffer* message) {
 			event_type_ = market::stringToEventType(val.get_string().value());
 		}
 		else if (key == "asset_id") {
-			std::string_view raw_asset_id{ val.raw_json() };
+			std::string_view raw_asset_id{ val.get_string().value() };
 			asset_id_ = std::hash<std::string_view>{}(raw_asset_id);
-			std::cout << "Populated asset id!\n";
 		}
 		else if (key == "timestamp") {
-			uint64_t timestamp{};
 			std::string_view raw_timestamp{ val.get_string().value() };
+			uint64_t timestamp{};
 
 			auto [ptr, ec] = std::from_chars(raw_timestamp.data(), raw_timestamp.data() + raw_timestamp.size(),
 				timestamp);
@@ -124,8 +117,6 @@ void market::MarketEngine::parseAndApplyUpdate(market::MessageBuffer* message) {
 			if (ec == std::errc()) {
 				book_snapshot_buffer_.timestamp_ = timestamp;
 				price_change_buffer_.timestamp_ = timestamp;
-
-				std::cout << std::format("Populated timestamp with time {}\n", timestamp);
 			}
 		}
 		else if (key == "bids" && val.type() == simdjson::ondemand::json_type::array) {
@@ -144,11 +135,7 @@ void market::MarketEngine::parseAndApplyUpdate(market::MessageBuffer* message) {
 					// success path
 					book_snapshot_buffer_.asks_[static_cast<int>(bid_price)] = bid_size;
 				}
-				else {
-					std::cerr << "Could not parse ask, did not update book\n";
-				}
 			}
-			std::cout << "Populated bids!\n";
 		}
 		else if (key == "asks" && val.type() == simdjson::ondemand::json_type::array) {
 			simdjson::ondemand::array asks_arr{ val.get_array() };
@@ -166,16 +153,16 @@ void market::MarketEngine::parseAndApplyUpdate(market::MessageBuffer* message) {
 					// success path
 					book_snapshot_buffer_.asks_[static_cast<int>(ask_price)] = ask_size;
 				}
-				else {
-					std::cerr << "Could not parse ask, did not update book\n";
-					continue;
-				}
 			}
-			std::cout << "Populated asks!\n";
 		}
 		else if (key == "price_changes" && val.type() == simdjson::ondemand::json_type::array) {
 			simdjson::ondemand::array price_change_arr{ val.get_array() };
 			for (simdjson::ondemand::object price_change : price_change_arr) {
+				std::string_view raw_asset_id{ price_change["asset_id"].get_string().value() };
+				if (std::hash<std::string_view>{}(raw_asset_id) != target_asset_id_hash_) {
+					continue;
+				}
+
 				std::string_view raw_price{ price_change["price"].get_string().value() };
 				float price{};
 				auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), price);
@@ -211,11 +198,11 @@ void market::MarketEngine::parseAndApplyUpdate(market::MessageBuffer* message) {
 		}
 		// TODO: for now i am just visualizing liquidity, but at some point I should
 		// visualize trades as well, so we need to capture the last_trade_price message
+
+		// ^^^^ i can create a trade ledger (later)
 	}
 
-	if (!books_.contains(asset_id_)) {
-		std::cerr << "CRITICAL: Could not find matching orderbook with specified asset_id, dropping\n";
-		std::cerr << "Asset id was " << asset_id_ << '\n';
+	if (asset_id_ != target_asset_id_hash_) {
 		return;
 	}
 
@@ -224,12 +211,17 @@ void market::MarketEngine::parseAndApplyUpdate(market::MessageBuffer* message) {
 		std::cerr << "CRITICAL: Failed to find event_type in json payload, dropping message\n";
 		return;
 	case EventType::kBookSnapshot:
-		books_[asset_id_].applySnapshot(book_snapshot_buffer_);
-		std::cout << "Applied a snapshot!\n";
+		book_.applySnapshot(book_snapshot_buffer_);
 		break;
 	case EventType::kPriceChange:
-		books_[asset_id_].applyPriceChange(price_change_buffer_);
-		std::cout << "Applied a price change!\n";
+		book_.applyPriceChange(price_change_buffer_);
 		break;
 	}
+
+	std::cout << std::format("Best bid: {} at {}\nBest ask: {} at {}\n\n",
+		book_.getBestBidSize(),
+		book_.getBestBid(),
+		book_.getBestAskSize(),
+		book_.getBestAsk()
+	);
 }
