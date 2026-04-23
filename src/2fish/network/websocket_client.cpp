@@ -21,6 +21,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
@@ -29,9 +30,9 @@ namespace ssl = boost::asio::ssl;
 using tcp = boost::asio::ip::tcp;
 
 market::WebsocketClient::WebsocketClient(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
-	NetworkBufferPool& buffer_pool, std::atomic<bool>& running, std::string_view target_asset_id_raw)
+	NetworkBufferPool& buffer_pool, std::atomic<bool>& running, std::string target_asset_id_raw)
 	: market_queue_{ market_queue }, buffer_pool_{ buffer_pool }
-	, running_{ running }, target_asset_id_raw_{ target_asset_id_raw}
+	, running_{ running }, target_asset_id_raw_{ std::move(target_asset_id_raw) }
 {
 }
 

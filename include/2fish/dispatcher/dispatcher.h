@@ -20,7 +20,7 @@ namespace market {
 	public:
 		// TODO: make sure this supports multiple order books, or at least validate the one order book
 		Dispatcher(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue, NetworkBufferPool& buffer_pool, 
-			std::atomic<bool>& running, std::string_view target_asset_id_raw);
+			std::atomic<bool>& running, std::string target_asset_id_raw);
 
 		void start();
 
@@ -41,7 +41,7 @@ namespace market {
 		// own and reuse the following objects to send to the order book without
 		// excessive allocations
 		market::EventType event_type_{};
-		uint64_t asset_id_{};
+		std::string current_asset_id_{};
 		market::BookSnapshot book_snapshot_buffer_{};
 		market::PriceChange price_change_buffer_{};
 
@@ -50,8 +50,7 @@ namespace market {
 		// corresponding to the yes/no markets. to verify we are capturing the
 		// correct market, hard match the asset id hash
 
-		std::string_view target_asset_id_raw_{};
-		uint64_t target_asset_id_hash_{};
+		std::string target_asset_id_raw_{};
 
 		std::jthread thread_{};
 	};

@@ -12,7 +12,7 @@ namespace market {
 	public:
 		WebsocketClient(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
 			NetworkBufferPool& buffer_pool, std::atomic<bool>& running,
-			std::string_view target_asset_id_raw);
+			std::string target_asset_id_raw);
 
 		void start();
 
@@ -25,7 +25,7 @@ namespace market {
 
 		std::atomic<bool>& running_;
 
-		std::string_view target_asset_id_raw_{};
+		std::string target_asset_id_raw_{};
 
 		std::jthread thread_;
 	};

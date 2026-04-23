@@ -14,6 +14,7 @@
 #include <string_view>
 #include <system_error>
 #include <thread>
+#include <utility>
 
 #include <format>
 #include <iostream>
@@ -22,13 +23,11 @@
 #include <intrin0.inl.h>
 
 market::Dispatcher::Dispatcher(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
-	NetworkBufferPool& buffer_pool, std::atomic<bool>& running, std::string_view target_asset_id_raw)
+	NetworkBufferPool& buffer_pool, std::atomic<bool>& running, std::string target_asset_id_raw)
 	: market_queue_{ market_queue }, buffer_pool_{ buffer_pool }
-	, running_{ running }, target_asset_id_raw_{ target_asset_id_raw }
+	, running_{ running }, target_asset_id_raw_{ std::move(target_asset_id_raw) }
 {
 	price_change_buffer_.deltas_.reserve(10);
-
-	target_asset_id_hash_ = std::hash<std::string_view>{}(target_asset_id_raw_);
 }
 
 void market::Dispatcher::start() {
@@ -104,8 +103,7 @@ void market::Dispatcher::parseAndApplyUpdates(market::MessageBuffer* message) {
 			event_type_ = market::stringToEventType(val.get_string().value());
 		}
 		else if (key == "asset_id") {
-			std::string_view raw_asset_id{ val.get_string().value() };
-			asset_id_ = std::hash<std::string_view>{}(raw_asset_id);
+			current_asset_id_ = val.get_string().value();
 		}
 		else if (key == "timestamp") {
 			std::string_view raw_timestamp{ val.get_string().value() };
@@ -159,7 +157,7 @@ void market::Dispatcher::parseAndApplyUpdates(market::MessageBuffer* message) {
 			simdjson::ondemand::array price_change_arr{ val.get_array() };
 			for (simdjson::ondemand::object price_change : price_change_arr) {
 				std::string_view raw_asset_id{ price_change["asset_id"].get_string().value() };
-				if (std::hash<std::string_view>{}(raw_asset_id) != target_asset_id_hash_) {
+				if (raw_asset_id != target_asset_id_raw_) {
 					continue;
 				}
 
@@ -202,7 +200,7 @@ void market::Dispatcher::parseAndApplyUpdates(market::MessageBuffer* message) {
 		// ^^^^ i can create a trade ledger (later)
 	}
 
-	if (asset_id_ != target_asset_id_hash_) {
+	if (current_asset_id_ != target_asset_id_raw_) {
 		return;
 	}
 
