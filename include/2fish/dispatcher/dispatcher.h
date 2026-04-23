@@ -19,8 +19,8 @@ namespace market {
 	class Dispatcher {
 	public:
 		// TODO: make sure this supports multiple order books, or at least validate the one order book
-		Dispatcher(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
-			NetworkBufferPool& buffer_pool, std::atomic<bool>& running);
+		Dispatcher(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue, NetworkBufferPool& buffer_pool, 
+			std::atomic<bool>& running, std::string_view target_asset_id_raw);
 
 		void start();
 
@@ -49,9 +49,8 @@ namespace market {
 		// but price_change messages can contain multiple asset_ids, usually
 		// corresponding to the yes/no markets. to verify we are capturing the
 		// correct market, hard match the asset id hash
-		
-		// TODO: make this an argument that is passed in when creating the engine
-		// In fact, this needs to be owned by the engine
+
+		std::string_view target_asset_id_raw_{};
 		uint64_t target_asset_id_hash_{};
 
 		std::jthread thread_{};

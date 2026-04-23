@@ -19,6 +19,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 
 namespace beast = boost::beast;
@@ -28,8 +29,9 @@ namespace ssl = boost::asio::ssl;
 using tcp = boost::asio::ip::tcp;
 
 market::WebsocketClient::WebsocketClient(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
-	NetworkBufferPool& buffer_pool, std::atomic<bool>& running)
-	: market_queue_{ market_queue }, buffer_pool_{ buffer_pool }, running_{ running }
+	NetworkBufferPool& buffer_pool, std::atomic<bool>& running, std::string_view target_asset_id_raw)
+	: market_queue_{ market_queue }, buffer_pool_{ buffer_pool }
+	, running_{ running }, target_asset_id_raw_{ target_asset_id_raw}
 {
 }
 
@@ -68,8 +70,8 @@ void market::WebsocketClient::run() {
 	std::cout << std::format("Connected to wss://{}{}\n\n", host, path);
 
 	// hard coded for now, test market
-	std::string payload{ R"({"assets_ids": ["77893140510362582253172593084218413010407941075415081594586195705930819989216"], "type": "market", "level": 2})" };
-
+	std::string payload{ std::format(R"({{"assets_ids": ["{}"], "type": "market", "level": 2}})", target_asset_id_raw_) };
+	
 	ws.text(true);
 	ws.write(net::buffer(payload));
 

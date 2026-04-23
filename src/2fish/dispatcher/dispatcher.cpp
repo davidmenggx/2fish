@@ -22,13 +22,13 @@
 #include <intrin0.inl.h>
 
 market::Dispatcher::Dispatcher(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
-	NetworkBufferPool& buffer_pool, std::atomic<bool>& running)
-	: market_queue_{ market_queue }, buffer_pool_{ buffer_pool }, running_{ running }
+	NetworkBufferPool& buffer_pool, std::atomic<bool>& running, std::string_view target_asset_id_raw)
+	: market_queue_{ market_queue }, buffer_pool_{ buffer_pool }
+	, running_{ running }, target_asset_id_raw_{ target_asset_id_raw }
 {
 	price_change_buffer_.deltas_.reserve(10);
 
-	std::string_view target_asset_id_raw = "77893140510362582253172593084218413010407941075415081594586195705930819989216";
-	target_asset_id_hash_ = std::hash<std::string_view>{}(target_asset_id_raw);
+	target_asset_id_hash_ = std::hash<std::string_view>{}(target_asset_id_raw_);
 }
 
 void market::Dispatcher::start() {
@@ -218,10 +218,11 @@ void market::Dispatcher::parseAndApplyUpdates(market::MessageBuffer* message) {
 		break;
 	}
 
-	std::cout << std::format("Best bid: {} at {}\nBest ask: {} at {}\n\n",
-		book_.getBestBidSize(),
-		book_.getBestBid(),
+	// temporary debug statement
+	std::cout << std::format("Best ask: {} at {}\nBest bid: {} at {}\n\n",
 		book_.getBestAskSize(),
-		book_.getBestAsk()
+		book_.getBestAsk(),
+		book_.getBestBidSize(),
+		book_.getBestBid()
 	);
 }

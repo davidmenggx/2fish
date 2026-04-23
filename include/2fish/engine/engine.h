@@ -7,11 +7,14 @@
 #include "moodycamel/readerwriterqueue.h"
 
 #include <atomic>
+#include <string_view>
 
 namespace market {
 	class Engine {
 	public:
-		Engine();
+		Engine() = delete;
+
+		Engine(std::string target_asset_id_raw);
 
 		void start();
 
@@ -21,7 +24,9 @@ namespace market {
 
 		std::atomic<bool> running_{ false };
 
+		std::string target_asset_id_raw_{};
+
 		WebsocketClient client_;
-		Dispatcher market_engine_;
+		Dispatcher dispatcher_;
 	};
 }
