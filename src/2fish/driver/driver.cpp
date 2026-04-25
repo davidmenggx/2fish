@@ -7,7 +7,7 @@ Driver::Driver(std::string target_asset_id_raw)
 	: target_asset_id_raw_{ std::move(target_asset_id_raw) }
 	, client_{ market_queue_, buffer_pool_, running_, target_asset_id_raw_ }
 	, engine_{ market_queue_, buffer_pool_, market_snapshot_buffer_, running_, target_asset_id_raw_ }
-	, renderer_{ market_snapshot_buffer_, "2fish", 800, 800, running_ } // TODO: magic numbers!!
+	, renderer_{ market_snapshot_buffer_, "2fish", 1920, 1080, running_ } // TODO: magic numbers!!
 {
 }
 

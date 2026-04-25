@@ -27,6 +27,8 @@ namespace renderer {
 
 		void draw();
 
+		SDL_Texture* getTexture() const { return chart_texture_; }
+
 	private:
 		void updateHeatmapHistory();
 
@@ -40,6 +42,6 @@ namespace renderer {
 		uint16_t window_height_{};
 
 		HeatmapLookup heatmap_lookup_{};
-		RingBuffer<std::array<RGBA, 101>, 128U> heatmap_history_{};
+		RingBuffer<std::array<RGBA, 100>, 128U> heatmap_history_{};
 	};
 }

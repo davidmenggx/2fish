@@ -11,31 +11,27 @@ class RingBuffer {
     static_assert(std::has_single_bit(Size), "Size must be a power of 2");
 
 public:
-    bool push(const T& item) {
-        if (full()) { 
-            return false; 
-        }
-
+    void push(const T& item) {
         data_[head_ & mask_] = item;
+        if (full()) {
+            ++tail_;
+        }
         ++head_;
-        return true;
     }
 
-    bool pop(T& item) {
-        if (empty()) { 
-            return false; 
+    void pop(T& item) {
+        if (empty()) {
+            return;
         }
-
         item = data_[tail_ & mask_];
         ++tail_;
-        return true;
     }
 
-    bool empty() const { 
+    [[nodiscard]] bool empty() const { 
         return head_ == tail_; 
     }
 
-    bool full() const { 
+    [[nodiscard]] bool full() const { 
         return (head_ - tail_) == Size; 
     }
 

@@ -2,7 +2,6 @@
 #include "2fish/models/book_snapshot.h"
 #include "2fish/order_book/order_book.h"
 
-#include <chrono>
 #include <cstdint>
 #include <format>
 #include <stdexcept>

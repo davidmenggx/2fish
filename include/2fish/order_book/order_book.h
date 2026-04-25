@@ -21,14 +21,6 @@ namespace market {
 		const std::array<long double, 101>& getBids() const { return bids_; }
 		const std::array<long double, 101>& getAsks() const { return asks_; }
 
-		// DEBUG FOR NOW: --------------------------------
-
-		int getBestBid() const { return best_bid_; }
-		int getBestAsk() const { return best_ask_; }
-
-		long double getBestBidSize() const { return bids_[best_bid_]; }
-		long double getBestAskSize() const { return asks_[best_ask_]; }
-
 	private:
 		// Instead of traditional tree based approaches for the order book, i use a simple
 		// array because the only possible price levels are between $0 and $1 (100 cents)

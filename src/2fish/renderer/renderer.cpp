@@ -69,7 +69,7 @@ void renderer::Renderer::run() {
 	while (running_) {
 		while (SDL_PollEvent(&event)) {
 			if (event.type == SDL_EVENT_QUIT) {
-				running_.store(false);
+				running_.store(false, std::memory_order_relaxed);
 			}
 		}
 
@@ -77,8 +77,7 @@ void renderer::Renderer::run() {
 		SDL_RenderClear(main_renderer_);
 
 		chart_renderer_->draw();
-
-		SDL_RenderTexture(main_renderer_, main_texture_, nullptr, nullptr);
+		SDL_RenderTexture(main_renderer_, chart_renderer_->getTexture(), nullptr, nullptr);
 
 		SDL_RenderPresent(main_renderer_);
 	}

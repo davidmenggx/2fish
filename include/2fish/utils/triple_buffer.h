@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <memory>
 
 template <typename T>
 class TripleBuffer {
@@ -17,6 +18,7 @@ public:
 
 	// called by the reader
 	[[nodiscard]] const T* getReaderBuffer() {
+		read_head_ = idle_head_.exchange(read_head_, std::memory_order_acquire);
 		return &buffers_[read_head_];
 	}
 

@@ -1,5 +1,6 @@
 #include "2fish/renderer/heatmap_lookup.h"
 
+#include <cstdint>
 #include <format>
 #include <stdexcept>
 
@@ -47,6 +48,5 @@ renderer::RGBA renderer::HeatmapLookup::getColor(uint8_t weight) {
 	if (weight > 100) {
 		throw std::runtime_error(std::format("Heatmap percentage out of bounds: {}", weight));
 	}
-
 	return lookup_table_[weight];
 }

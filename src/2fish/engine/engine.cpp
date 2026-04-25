@@ -26,6 +26,8 @@
 #include <iostream>
 #include <string>
 
+#include <intrin0.inl.h>
+
 market::Engine::Engine(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue, NetworkBufferPool& buffer_pool,
 	TripleBuffer<MarketSnapshot>& market_snapshot_buffer, std::atomic<bool>& running, std::string target_asset_id_raw)
 	: market_queue_{ market_queue }, buffer_pool_{ buffer_pool }, market_snapshot_buffer_{ market_snapshot_buffer }
@@ -45,6 +47,7 @@ void market::Engine::run() {
 	while (running_) {
 		if (!market_queue_.try_dequeue(message)) {
 			if (messages_since_write > 0) {
+				std::cout << "Published snapshot\n\n";
 				publishSnapshot();
 				messages_since_write = 0;
 			}
@@ -60,6 +63,7 @@ void market::Engine::run() {
 		if (messages_since_write > 100) {
 			// if there is a big backlog of messages (high market activity),
 			// just force a write periodically (every 100 messages) so the GUI stays live
+			std::cout << "Published snapshot\n\n";
 			publishSnapshot();
 			messages_since_write = 0;
 		}
@@ -91,19 +95,15 @@ void market::Engine::publishSnapshot() {
 	}
 
 	std::array<long double, 101> asks{ book_.getAsks() };
-	long double cumulative_ask_size{};
-	for (auto ask_size : asks) {
-		cumulative_ask_size += ask_size;
-	}
+	long double max_ask{ *std::max_element(asks.begin(), asks.end()) };
 
-	if (cumulative_ask_size <= 0) {
+	if (max_ask <= 0) {
 		std::fill(buffer->asks_weight_.begin(), buffer->asks_weight_.end(), 0);
 	}
 	else {
-		// normalize the ask amount as a percentage for the renderer
-		long double inverse_cumulative_ask_size{ 100.0L / cumulative_ask_size };
-		for (size_t i{ 0 }; i < asks.size(); ++i) {
-			buffer->asks_weight_[i] = static_cast<uint8_t>(asks[i] * inverse_cumulative_ask_size + 0.5L);
+		for (std::size_t i{ 0 }; i < asks.size(); ++i) {
+			buffer->asks_weight_[i] = static_cast<uint8_t>(
+				(asks[i] / max_ask) * 100.0L + 0.5L);
 		}
 	}
 
@@ -184,7 +184,7 @@ void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
 			simdjson::ondemand::array bids_arr{ val.get_array() };
 			for (simdjson::ondemand::object bid : bids_arr) {
 				std::string_view raw_price{ bid["price"].get_string().value() };
-				float bid_price{};
+				double bid_price{};
 				auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), bid_price);
 				bid_price *= 100; // in cents
 
@@ -194,7 +194,7 @@ void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
 
 				if (ec1 == std::errc() && ec2 == std::errc()) {
 					// success path
-					book_snapshot_buffer_accumulator_.asks_[static_cast<int>(bid_price)] = bid_size;
+					book_snapshot_buffer_accumulator_.bids_[static_cast<int>(bid_price)] = bid_size;
 				}
 			}
 		}
@@ -202,7 +202,7 @@ void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
 			simdjson::ondemand::array asks_arr{ val.get_array() };
 			for (simdjson::ondemand::object ask : asks_arr) {
 				std::string_view raw_price{ ask["price"].get_string().value() };
-				float ask_price{};
+				double ask_price{};
 				auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), ask_price);
 				ask_price *= 100; // in cents
 
@@ -225,7 +225,7 @@ void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
 				}
 
 				std::string_view raw_price{ price_change["price"].get_string().value() };
-				float price{};
+				double price{};
 				auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), price);
 				price *= 100; // in cents
 
@@ -237,12 +237,12 @@ void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
 				market::Side side = (raw_side == "BUY") ? market::Side::kBuy : market::Side::kSell;
 
 				std::string_view raw_best_bid{ price_change["best_bid"].get_string().value() };
-				float best_bid{};
+				double best_bid{};
 				auto [ptr3, ec3] = std::from_chars(raw_best_bid.data(), raw_best_bid.data() + raw_best_bid.size(), best_bid);
 				best_bid *= 100; // in cents
 
 				std::string_view raw_best_ask{ price_change["best_ask"].get_string().value() };
-				float best_ask{};
+				double best_ask{};
 				auto [ptr4, ec4] = std::from_chars(raw_best_ask.data(), raw_best_ask.data() + raw_best_ask.size(), best_ask);
 				best_ask *= 100; // in cents
 
@@ -264,6 +264,7 @@ void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
 	}
 
 	if (current_asset_id_accumulator_ != target_asset_id_raw_) {
+		std::cout << "Unknown asset id\n";
 		return;
 	}
 
@@ -279,11 +280,5 @@ void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
 		break;
 	}
 
-	// temporary debug statement
-	std::cout << std::format("Best ask: {} at {}\nBest bid: {} at {}\n\n",
-		book_.getBestAskSize(),
-		book_.getBestAsk(),
-		book_.getBestBidSize(),
-		book_.getBestBid()
-	);
+	std::cout << "Applied an update\n\n";
 }
