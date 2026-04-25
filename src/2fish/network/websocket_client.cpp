@@ -15,6 +15,7 @@
 #include "moodycamel/readerwriterqueue.h"
 
 #include <atomic>
+#include <cstdint>
 #include <format>
 #include <iostream>
 #include <stdexcept>
@@ -115,9 +116,6 @@ void market::WebsocketClient::run() {
 		fb.consume(fb.size());
 
 		market_queue_.enqueue(buffer);
-
-		// TODO: figure out logging
-		// std::cout << std::format("Enqueued message of {} bytes\n", buffer->message_size_);
 	}
 
 	std::cout << "Stop message received, websocket client stopping\n";

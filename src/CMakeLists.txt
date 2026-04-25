@@ -17,6 +17,7 @@ target_link_libraries(2fish_core PUBLIC
     Threads::Threads
     OpenSSL::SSL
     simdjson::simdjson
+    SDL3::SDL3-static
 )
 
 if(WIN32)

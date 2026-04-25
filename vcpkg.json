@@ -5,6 +5,7 @@
     "boost-system",
     "boost-filesystem",
     "openssl",
-    "simdjson"
+    "simdjson",
+    "sdl3"
   ]
 }

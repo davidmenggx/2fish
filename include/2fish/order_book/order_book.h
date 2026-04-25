@@ -15,7 +15,11 @@ namespace market {
 
 		void applyPriceChange(PriceChange& diff);
 
+		// TODO: perhaps remove this? we are only using this for unit tests rn
 		uint64_t getSize(Side side, int price);
+
+		const std::array<long double, 101>& getBids() const { return bids_; }
+		const std::array<long double, 101>& getAsks() const { return asks_; }
 
 		// DEBUG FOR NOW: --------------------------------
 
@@ -25,17 +29,11 @@ namespace market {
 		long double getBestBidSize() const { return bids_[best_bid_]; }
 		long double getBestAskSize() const { return asks_[best_ask_]; }
 
-		uint64_t getLastMessageTimestamp() const { return last_message_; }
-		uint64_t getLastUpdateTimestamp() const { return last_updated_; }
-
 	private:
 		// Instead of traditional tree based approaches for the order book, i use a simple
 		// array because the only possible price levels are between $0 and $1 (100 cents)
 		std::array<long double, 101> bids_{};
 		std::array<long double, 101> asks_{};
-
-		uint64_t last_message_{}; // milliseconds
-		uint64_t last_updated_{}; // milliseconds
 
 		int best_bid_{};
 		int best_ask_{};

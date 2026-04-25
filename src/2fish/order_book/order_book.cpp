@@ -21,12 +21,6 @@ void market::OrderBook::applyPriceChange(market::PriceChange& diff) {
 
 		// TODO: verify that the top of book is as expected
 	}
-
-	last_message_ = diff.timestamp_;
-
-	auto now = std::chrono::system_clock::now();
-	auto duration = now.time_since_epoch();
-	last_updated_ = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 }
 
 void market::OrderBook::applySnapshot(market::BookSnapshot& snapshot) {
@@ -51,12 +45,6 @@ void market::OrderBook::applySnapshot(market::BookSnapshot& snapshot) {
             break;
         }
     }
-
-	last_message_ = snapshot.timestamp_;
-
-	auto now = std::chrono::system_clock::now();
-	auto duration = now.time_since_epoch();
-	last_updated_ = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 }
 
 uint64_t market::OrderBook::getSize(market::Side side, int price) {

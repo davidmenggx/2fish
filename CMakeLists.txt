@@ -25,6 +25,8 @@ find_package(OpenSSL REQUIRED)
 
 find_package(simdjson REQUIRED)
 
+find_package(SDL3 REQUIRED)
+
 add_subdirectory(src)
 
 option(BUILD_TESTING "Build the tests" ON)

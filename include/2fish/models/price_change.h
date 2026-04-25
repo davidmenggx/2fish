@@ -16,6 +16,5 @@ namespace market {
 
 	struct PriceChange {
 		std::vector<OrderLevelDelta> deltas_{};
-		uint64_t timestamp_{}; // milliseconds
 	};
 }
