@@ -219,7 +219,7 @@ void renderer::Renderer::createFramebuffers() {
 void renderer::Renderer::createCommandAndSyncObjects() {
 	VkCommandPoolCreateInfo pool_info = {};
 	pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // Allow resetting per frame
+	pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 	pool_info.queueFamilyIndex = graphics_queue_family_;
 
 	if (vkCreateCommandPool(vkb_device_.device, &pool_info, nullptr, &command_pool_) != VK_SUCCESS) {
@@ -241,7 +241,7 @@ void renderer::Renderer::createCommandAndSyncObjects() {
 
 	VkFenceCreateInfo fence_info = {};
 	fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT; // Start signaled so the first frame doesn't block forever
+	fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
 	if (vkCreateSemaphore(vkb_device_.device, &semaphore_info, nullptr, &image_available_semaphore_) != VK_SUCCESS ||
 		vkCreateSemaphore(vkb_device_.device, &semaphore_info, nullptr, &render_finished_semaphore_) != VK_SUCCESS ||
@@ -262,11 +262,20 @@ void renderer::Renderer::run() {
 		}
 
 		vkWaitForFences(vkb_device_.device, 1, &in_flight_fence_, VK_TRUE, UINT64_MAX);
-		vkResetFences(vkb_device_.device, 1, &in_flight_fence_);
 
 		uint32_t image_index;
-		vkAcquireNextImageKHR(vkb_device_.device, vkb_swapchain_.swapchain, UINT64_MAX,
+		VkResult result = vkAcquireNextImageKHR(vkb_device_.device, vkb_swapchain_.swapchain, UINT64_MAX,
 			image_available_semaphore_, VK_NULL_HANDLE, &image_index);
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+			recreateSwapchain();
+			continue;
+		}
+		else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+			throw std::runtime_error("Failed to acquire swapchain image!");
+		}
+
+		vkResetFences(vkb_device_.device, 1, &in_flight_fence_);
 
 		vkResetCommandBuffer(command_buffer_, 0);
 
@@ -292,7 +301,7 @@ void renderer::Renderer::run() {
 		render_pass_info.renderArea.offset = { 0, 0 };
 		render_pass_info.renderArea.extent = vkb_swapchain_.extent;
 
-		VkClearValue clear_color = { {{0.0f, 0.0f, 0.0f, 1.0f}} }; // Black background
+		VkClearValue clear_color = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
 		render_pass_info.clearValueCount = 1;
 		render_pass_info.pClearValues = &clear_color;
 
@@ -321,17 +330,66 @@ void renderer::Renderer::run() {
 
 		vkQueueSubmit(graphics_queue_, 1, &submit_info, in_flight_fence_);
 
-		// vulkan presentUnexpected error occured, aborting: Failed to construct window: Vulkan support is either not configured in SDL or not available in current SDL video driver (windows) or platform
 		VkPresentInfoKHR present_info = {};
 		present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		present_info.waitSemaphoreCount = 1;
-		present_info.pWaitSemaphores = signal_semaphores; // Wait for rendering to finish
+		present_info.pWaitSemaphores = signal_semaphores;
 
 		VkSwapchainKHR swapchains[] = { vkb_swapchain_.swapchain };
 		present_info.swapchainCount = 1;
 		present_info.pSwapchains = swapchains;
 		present_info.pImageIndices = &image_index;
 
-		vkQueuePresentKHR(graphics_queue_, &present_info);
+		result = vkQueuePresentKHR(graphics_queue_, &present_info);
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+			recreateSwapchain();
+		}
+		else if (result != VK_SUCCESS) {
+			throw std::runtime_error("Failed to present swapchain image");
+		}
 	}
+}
+void renderer::Renderer::recreateSwapchain() {
+	int width{ 0 };
+	int height{ 0 };
+	SDL_GetWindowSizeInPixels(main_window_, &width, &height);
+
+	while (width == 0 || height == 0) {
+		SDL_GetWindowSizeInPixels(main_window_, &width, &height);
+		SDL_Event event;
+		SDL_WaitEvent(&event);
+	}
+
+	vkDeviceWaitIdle(vkb_device_.device);
+
+	for (auto framebuffer : framebuffers_) {
+		vkDestroyFramebuffer(vkb_device_.device, framebuffer, nullptr);
+	}
+	framebuffers_.clear();
+
+	for (auto imageView : swapchain_image_views_) {
+		vkDestroyImageView(vkb_device_.device, imageView, nullptr);
+	}
+	swapchain_image_views_.clear();
+
+	vkb::SwapchainBuilder swapchain_builder{ vkb_device_ };
+	auto vkb_swapchain_ret = swapchain_builder
+		.set_old_swapchain(vkb_swapchain_)
+		.build();
+
+	if (!vkb_swapchain_ret) {
+		throw std::runtime_error("Failed to recreate swapchain!");
+	}
+
+	vkb::destroy_swapchain(vkb_swapchain_);
+	vkb_swapchain_ = vkb_swapchain_ret.value();
+
+	auto views_ret = vkb_swapchain_.get_image_views();
+	if (!views_ret) {
+		throw std::runtime_error("Failed to get new swapchain image views!");
+	}
+	swapchain_image_views_ = views_ret.value();
+
+	createFramebuffers();
 }

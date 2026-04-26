@@ -61,32 +61,44 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 		}
 	}
 
-	ImGui::Begin("Market Liquidity");
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+	ImGui::SetNextWindowPos(viewport->WorkPos);
+	ImGui::SetNextWindowSize(viewport->WorkSize);
 
-	if (bookmap_colormap_ != -1) {
-		ImPlot::PushColormap(bookmap_colormap_);
+	ImGuiWindowFlags window_flags =
+		ImGuiWindowFlags_NoDecoration |
+		ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoSavedSettings |
+		ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+	if (ImGui::Begin("Orderbook heatmap", nullptr, window_flags)) {
+
+		if (bookmap_colormap_ != -1) {
+			ImPlot::PushColormap(bookmap_colormap_);
+		}
+
+		if (ImPlot::BeginPlot("##OrderBook", ImVec2(-1, -1), ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText)) {
+			ImPlot::SetupAxes("Time", "Price");
+
+			ImPlot::SetupAxisLimits(ImAxis_X1, 0, kHistorySteps, ImPlotCond_Always);
+			ImPlot::SetupAxisLimits(ImAxis_Y1, 0, kPriceLevels, ImPlotCond_Always);
+
+			ImPlot::PlotHeatmap("Liquidity",
+				heatmap_render_buffer_.data(),
+				kPriceLevels,
+				kHistorySteps,
+				0.0, 1.0,
+				nullptr,
+				ImPlotPoint(0, 0),
+				ImPlotPoint(kHistorySteps, kPriceLevels));
+
+			ImPlot::EndPlot();
+		}
+
+		if (bookmap_colormap_ != -1) {
+			ImPlot::PopColormap();
+		}
 	}
 
-	if (ImPlot::BeginPlot("##OrderBook", ImVec2(-1, -1), ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText)) {
-		ImPlot::SetupAxes("Time", "Price");
-
-		ImPlot::SetupAxisLimits(ImAxis_X1, 0, kHistorySteps, ImPlotCond_Always);
-		ImPlot::SetupAxisLimits(ImAxis_Y1, 0, kPriceLevels, ImPlotCond_Always);
-
-		ImPlot::PlotHeatmap("Liquidity",
-			heatmap_render_buffer_.data(),
-			kPriceLevels,
-			kHistorySteps,
-			0.0, 1.0,
-			nullptr,
-			ImPlotPoint(0, 0),
-			ImPlotPoint(kHistorySteps, kPriceLevels));
-
-		ImPlot::EndPlot();
-	}
-
-	if (bookmap_colormap_ != -1) {
-		ImPlot::PopColormap();
-	}
 	ImGui::End();
 }

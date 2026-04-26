@@ -32,6 +32,7 @@ namespace renderer {
         void createRenderPass();
         void createFramebuffers();
         void createCommandAndSyncObjects();
+        void recreateSwapchain();
 
         SDL_Window* main_window_{ nullptr };
 
