@@ -16,11 +16,12 @@ renderer::ChartRenderer::ChartRenderer()
 
 void renderer::ChartRenderer::init() {
 	static const ImVec4 colors[] = {
-		ImVec4(0.00f, 0.00f, 0.05f, 1.00f),
-		ImVec4(0.20f, 0.05f, 0.30f, 1.00f),
-		ImVec4(0.55f, 0.15f, 0.35f, 1.00f),
-		ImVec4(0.85f, 0.40f, 0.25f, 1.00f),
-		ImVec4(1.00f, 0.70f, 0.40f, 1.00f)
+		ImVec4(0.01f, 0.01f, 0.05f, 1.00f), // dark navy
+		ImVec4(0.02f, 0.05f, 0.15f, 1.00f),
+		ImVec4(0.20f, 0.30f, 0.20f, 1.00f),
+		ImVec4(0.50f, 0.65f, 0.15f, 1.00f),
+		ImVec4(0.80f, 0.95f, 0.05f, 1.00f),
+		ImVec4(1.00f, 1.00f, 0.00f, 1.00f)  // neon yellow
 	};
 	bookmap_colormap_ = ImPlot::AddColormap("Bookmap", colors, std::size(colors));
 }
@@ -62,23 +63,43 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 	}
 
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
-	ImGui::SetNextWindowPos(viewport->WorkPos);
-	ImGui::SetNextWindowSize(viewport->WorkSize);
+
+	const float panel_width = viewport->WorkSize.x * 0.7f;
+	const float panel_height = viewport->WorkSize.y;
+
+	// anchor to top left of screen
+	ImVec2 window_pos = viewport->WorkPos;
+
+	ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(panel_width, panel_height), ImGuiCond_Always);
 
 	ImGuiWindowFlags window_flags =
 		ImGuiWindowFlags_NoDecoration |
 		ImGuiWindowFlags_NoMove |
 		ImGuiWindowFlags_NoSavedSettings |
-		ImGuiWindowFlags_NoBringToFrontOnFocus;
+		ImGuiWindowFlags_NoBackground;
 
 	if (ImGui::Begin("Orderbook heatmap", nullptr, window_flags)) {
+		ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+		ImPlot::PushStyleColor(ImPlotCol_PlotBg, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+		ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(0.0f, 0.0f));
 
 		if (bookmap_colormap_ != -1) {
 			ImPlot::PushColormap(bookmap_colormap_);
 		}
 
-		if (ImPlot::BeginPlot("##OrderBook", ImVec2(-1, -1), ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText)) {
-			ImPlot::SetupAxes("Time", "Price");
+		ImPlotFlags plot_flags = ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoFrame;
+
+		if (ImPlot::BeginPlot("##OrderBook", ImVec2(-1, -1), plot_flags)) {
+
+			ImPlotAxisFlags x_flags = ImPlotAxisFlags_NoDecorations;
+
+			// Removed ImPlotAxisFlags_Opposite so the ticks stay on the left
+			ImPlotAxisFlags y_flags = ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_NoLabel;
+
+			ImPlot::SetupAxes(nullptr, nullptr, x_flags, y_flags);
+
+			ImPlot::PushStyleColor(ImPlotCol_AxisText, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
 
 			ImPlot::SetupAxisLimits(ImAxis_X1, 0, kHistorySteps, ImPlotCond_Always);
 			ImPlot::SetupAxisLimits(ImAxis_Y1, 0, kPriceLevels, ImPlotCond_Always);
@@ -92,13 +113,16 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 				ImPlotPoint(0, 0),
 				ImPlotPoint(kHistorySteps, kPriceLevels));
 
+			ImPlot::PopStyleColor();
 			ImPlot::EndPlot();
 		}
 
 		if (bookmap_colormap_ != -1) {
 			ImPlot::PopColormap();
 		}
-	}
 
+		ImPlot::PopStyleVar();
+		ImPlot::PopStyleColor(2);
+	}
 	ImGui::End();
 }

@@ -19,7 +19,7 @@ target_link_libraries(2fish_core PUBLIC
     simdjson::simdjson
     SDL3::SDL3-static
     imgui::imgui
-    implot::implot 
+    implot::implot
     glfw 
     Vulkan::Vulkan
     vk-bootstrap::vk-bootstrap

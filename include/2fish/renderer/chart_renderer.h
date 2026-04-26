@@ -24,7 +24,7 @@ namespace renderer {
 		uint16_t window_height_{};
 
 		// how many market snapshots are saved
-		static constexpr size_t kHistorySteps{ 128U };
+		static constexpr size_t kHistorySteps{ 256U };
 		static constexpr size_t kPriceLevels = 101U;
 
 		RingBuffer<MarketSnapshot, kHistorySteps> heatmap_history_{};
