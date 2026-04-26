@@ -4,8 +4,8 @@
 #include <cstdint>
 
 struct MarketSnapshot {
-	std::array<uint8_t, 101> bids_weight_{}; // as a percent
-	std::array<uint8_t, 101> asks_weight_{};  // as a percent
+	std::array<long double, 101> bids_{};
+	std::array<long double, 101> asks_{};
 
 	uint64_t last_message_{}; // milliseconds
 	uint64_t last_updated_{}; // milliseconds

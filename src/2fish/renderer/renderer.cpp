@@ -16,7 +16,6 @@
 
 #include <atomic>
 #include <format>
-#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -28,31 +27,14 @@ renderer::Renderer::Renderer(TripleBuffer<MarketSnapshot>& market_snapshot_buffe
 		throw std::runtime_error(std::format("Could not initialize SDL: {}", SDL_GetError()));
 	}
 
-	if (!SDL_CreateWindowAndRenderer(title.c_str(), width, height, SDL_WINDOW_RESIZABLE, 
-		&main_window_, &main_renderer_)) {
-		throw std::runtime_error(std::format("Failed to construct window or renderer: {}", SDL_GetError()));
-	}
-
-	main_texture_ = SDL_CreateTexture(main_renderer_, SDL_PIXELFORMAT_RGBA32,
-		SDL_TEXTUREACCESS_STREAMING, width, height);
-
-	if (!main_texture_) {
-		SDL_DestroyRenderer(main_renderer_);
-		SDL_DestroyWindow(main_window_);
-		SDL_Quit();
-		throw std::runtime_error(std::format("Texture creation failed: {}", SDL_GetError()));
+	if (!SDL_CreateWindow(title.c_str(), width, height, SDL_WINDOW_RESIZABLE)) {
+		throw std::runtime_error(std::format("Failed to construct window: {}", SDL_GetError()));
 	}
 
 	// TODO: create dear imgui
 }
 
 renderer::Renderer::~Renderer() {
-	if (main_texture_) {
-		SDL_DestroyTexture(main_texture_);
-	}
-	if (main_renderer_) {
-		SDL_DestroyRenderer(main_renderer_);
-	}
 	if (main_window_) {
 		SDL_DestroyWindow(main_window_);
 	}
@@ -61,9 +43,7 @@ renderer::Renderer::~Renderer() {
 	// TODO: close dear imgui
 }
 
-void renderer::Renderer::run() {
-	chart_renderer_ = std::make_unique<ChartRenderer>(main_renderer_, main_texture_, market_snapshot_buffer_);
-	
+void renderer::Renderer::run() {	
 	SDL_Event event;
 
 	while (running_) {
@@ -73,12 +53,8 @@ void renderer::Renderer::run() {
 			}
 		}
 
-		SDL_SetRenderDrawColor(main_renderer_, 0, 0, 0, 255);
-		SDL_RenderClear(main_renderer_);
+		const MarketSnapshot* snapshot{ market_snapshot_buffer_.getReaderBuffer() };
 
-		chart_renderer_->draw();
-		SDL_RenderTexture(main_renderer_, chart_renderer_->getTexture(), nullptr, nullptr);
-
-		SDL_RenderPresent(main_renderer_);
+		chart_renderer_.updateAndDraw(snapshot);
 	}
 }

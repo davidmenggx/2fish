@@ -77,35 +77,11 @@ void market::Engine::run() {
 void market::Engine::publishSnapshot() {
 	MarketSnapshot* buffer{ market_snapshot_buffer_.getWriterBuffer() };
 
-	std::array<long double, 101> bids{ book_.getBids() };
-	long double cumulative_bid_size{};
-	for (auto bid_size : bids) {
-		cumulative_bid_size += bid_size;
-	}
+	std::array<long double, 101> book_bids{ book_.getBids() };
+	std::copy(book_bids.begin(), book_bids.end(), buffer->bids_.begin());
 
-	if (cumulative_bid_size <= 0) {
-		std::fill(buffer->bids_weight_.begin(), buffer->bids_weight_.end(), 0);
-	}
-	else {
-		// normalize the bid amount as a percentage for the renderer
-		long double inverse_cumulative_bid_size{ 100.0L / cumulative_bid_size };
-		for (size_t i{ 0 }; i < bids.size(); ++i) {
-			buffer->bids_weight_[i] = static_cast<uint8_t>(bids[i] * inverse_cumulative_bid_size + 0.5L);
-		}
-	}
-
-	std::array<long double, 101> asks{ book_.getAsks() };
-	long double max_ask{ *std::max_element(asks.begin(), asks.end()) };
-
-	if (max_ask <= 0) {
-		std::fill(buffer->asks_weight_.begin(), buffer->asks_weight_.end(), 0);
-	}
-	else {
-		for (std::size_t i{ 0 }; i < asks.size(); ++i) {
-			buffer->asks_weight_[i] = static_cast<uint8_t>(
-				(asks[i] / max_ask) * 100.0L + 0.5L);
-		}
-	}
+	std::array<long double, 101> book_asks{ book_.getAsks() };
+	std::copy(book_asks.begin(), book_asks.end(), buffer->asks_.begin());
 
 	auto now = std::chrono::system_clock::now();
 	auto duration = now.time_since_epoch();
