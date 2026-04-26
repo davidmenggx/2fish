@@ -33,6 +33,11 @@ namespace market {
 
 		void parseAndApplyUpdates(MessageBuffer* message);
 
+		// Parsing helpers:
+		void getBids(simdjson::ondemand::array bids_arr);
+		void getAsks(simdjson::ondemand::array asks_arr);
+		void getPriceChanges(simdjson::ondemand::array price_change_arr);
+
 		OrderBook book_{};
 
 		TripleBuffer<MarketSnapshot>& market_snapshot_buffer_;
