@@ -10,13 +10,13 @@
 // TODO: move these to some constants place
 // TODO: 8192 came from some very minimal test readings, perhaps
 // find a more robust way to profile the size
-constexpr std::size_t kMaxMessageSize{ 8192 };
-constexpr std::size_t kBufferCount{ 128 }; // TODO: perhaps not constexpr so i can set in ctor
+constexpr std::size_t kMaxMessageSize{ 16384 };
+constexpr std::size_t kBufferCount{ 2048 }; // TODO: perhaps not constexpr so i can set in ctor
 constexpr size_t kBufferSize{ kMaxMessageSize + simdjson::SIMDJSON_PADDING };
 
 namespace market {
 	struct MessageBuffer {
-		char data_[kBufferSize];
+		char data_[kBufferSize]{};
 		uint32_t message_size_{}; // bytes
 	};
 

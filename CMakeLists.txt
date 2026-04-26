@@ -27,6 +27,16 @@ find_package(simdjson REQUIRED)
 
 find_package(SDL3 REQUIRED)
 
+find_package(imgui CONFIG REQUIRED)
+
+find_package(implot CONFIG REQUIRED)
+
+find_package(glfw3 CONFIG REQUIRED)
+
+find_package(Vulkan REQUIRED)
+
+find_package(vk-bootstrap CONFIG REQUIRED)
+
 add_subdirectory(src)
 
 option(BUILD_TESTING "Build the tests" ON)

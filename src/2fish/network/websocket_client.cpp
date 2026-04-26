@@ -73,7 +73,7 @@ void market::WebsocketClient::run() {
 
 	// hard coded for now, test market
 	std::string payload{ std::format(R"({{"assets_ids": ["{}"], "type": "market", "level": 2}})", target_asset_id_raw_) };
-	
+
 	ws.text(true);
 	ws.write(net::buffer(payload));
 

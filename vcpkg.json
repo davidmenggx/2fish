@@ -6,6 +6,21 @@
     "boost-filesystem",
     "openssl",
     "simdjson",
-    "sdl3"
+    {
+      "name": "sdl3",
+      "features": [ "vulkan" ]
+    },
+    {
+      "name": "imgui",
+      "features": [
+        "sdl3-binding",
+        "vulkan-binding"
+      ]
+    },
+    "implot",
+    "glfw3",
+    "vulkan-headers",
+    "vulkan-loader",
+    "vk-bootstrap"
   ]
 }
