@@ -92,193 +92,243 @@ void market::Engine::publishSnapshot() {
 }
 
 void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
-	try {
-		// simdjson expects a certain amount of padding for safe simd parsing
-		simdjson::padded_string_view psv(
-			reinterpret_cast<const char*>(message->data_),
-			message->message_size_,
-			kBufferSize
-		);
+    // simdjson expects a certain amount of padding for safe simd parsing
+    simdjson::padded_string_view psv(
+        reinterpret_cast<const char*>(message->data_),
+        message->message_size_,
+        kBufferSize
+    );
 
-		simdjson::ondemand::document doc{ parser_.iterate(psv) };
+    simdjson::ondemand::document doc;
+    if (parser_.iterate(psv).get(doc)) {
+        std::cerr << "CRITICAL: Failed to parse JSON document. Dropping\n";
+        return;
+    }
 
-		simdjson::ondemand::object root;
+    simdjson::ondemand::json_type type;
+    if (doc.type().get(type)) {
+        std::cerr << "Failed to get document type\n";
+        return;
+    }
 
-		simdjson::ondemand::json_type type;
-		auto error = doc.type().get(type);
-		if (error) {
-			std::cerr << "Failed to get document type\n";
-			return;
-		}
+    simdjson::ondemand::object root;
+    if (type == simdjson::ondemand::json_type::array) {
+        // there are some weird edge cases when the entire object is wrapped in an array
+        simdjson::ondemand::array arr;
+        if (doc.get_array().get(arr)) return;
 
-		if (type == simdjson::ondemand::json_type::array) {
-			// there are some weird edge cases when the entire object is wrapped in an array
-			auto arr = doc.get_array();
-			auto first_element = arr.at(0);
+        simdjson::ondemand::value first_element;
+        if (arr.at(0).get(first_element)) return;
 
-			if (first_element.error()) {
-				return;
-			}
-			root = first_element.get_object();
-		}
-		else {
-			root = doc.get_object();
-		}
+        if (first_element.get_object().get(root)) return;
+    }
+    else {
+        if (doc.get_object().get(root)) return;
+    }
 
-		// reset the state between parses
-		event_type_accumulator_ = market::EventType::kUnknown;
-		book_snapshot_buffer_accumulator_.asks_.fill(0);
-		book_snapshot_buffer_accumulator_.bids_.fill(0);
-		price_change_buffer_accumulator_.deltas_.clear();
+    // reset the state between parses
+    event_type_accumulator_ = market::EventType::kUnknown;
+    book_snapshot_buffer_accumulator_.asks_.fill(0);
+    book_snapshot_buffer_accumulator_.bids_.fill(0);
+    price_change_buffer_accumulator_.deltas_.clear();
 
-		// speculatively build/prepare the schemas to be sent to the order book 
-		for (auto field : root) {
-			auto raw_key = field.unescaped_key();
+    // speculatively build/prepare the schemas to be sent to the order book 
+    for (auto field : root) {
+        std::string_view key;
+        if (field.unescaped_key().get(key)) {
+            continue;
+        }
 
-			if (raw_key.error()) {
-				continue;
-			}
+        simdjson::ondemand::value val;
+        if (field.value().get(val)) {
+            continue;
+        }
 
-			std::string_view key{ raw_key.value() };
+        if (key == "event_type") {
+            std::string_view event_type_str;
+            if (val.get_string().get(event_type_str)) {
+                continue;
+            }
 
-			simdjson::ondemand::value val{ field.value() };
+            event_type_accumulator_ = market::stringToEventType(event_type_str);
+        }
+        else if (key == "asset_id") {
+            std::string_view asset_id_str;
+            if (val.get_string().get(asset_id_str)) {
+                continue;
+            }
 
-			if (key == "event_type") {
-				std::string_view event_type_str;
-				if (val.get_string().get(event_type_str)) {
-					continue;
-				}
-				event_type_accumulator_ = market::stringToEventType(event_type_str);
-			}
-			else if (key == "asset_id") {
-				current_asset_id_accumulator_ = val.get_string().value();
-			}
-			else if (key == "timestamp") {
-				std::string_view raw_timestamp{ val.get_string().value() };
-				uint64_t timestamp{};
+            current_asset_id_accumulator_ = asset_id_str;
+        }
+        else if (key == "timestamp") {
+            std::string_view raw_timestamp;
+            if (val.get_string().get(raw_timestamp)) {
+                continue;
+            }
 
-				auto [ptr, ec] = std::from_chars(raw_timestamp.data(), raw_timestamp.data() + raw_timestamp.size(),
-					timestamp);
+            uint64_t timestamp{};
+            auto [ptr, ec] = std::from_chars(raw_timestamp.data(), raw_timestamp.data() + raw_timestamp.size(), timestamp);
 
-				if (ec == std::errc()) {
-					last_message_ = timestamp;
-				}
-			}
-			else if (key == "bids" && val.type() == simdjson::ondemand::json_type::array) {
-				simdjson::ondemand::array bids_arr;
-				if (val.get_array().get(bids_arr)) {
-					continue;
-				}
+            if (ec == std::errc()) {
+                last_message_ = timestamp;
+            }
+        }
+        else if (key == "bids" && val.type() == simdjson::ondemand::json_type::array) {
+            simdjson::ondemand::array bids_arr;
+            if (val.get_array().get(bids_arr)) {
+                continue;
+            }
 
-				for (auto bid_result : bids_arr) {
-					simdjson::ondemand::object bid;
-					if (bid_result.get(bid)) {
-						continue;
-					}
+            for (auto bid_result : bids_arr) {
+                simdjson::ondemand::object bid;
+                if (bid_result.get(bid)) {
+                    continue;
+                }
 
-					std::string_view raw_price;
-					if (bid["price"].get_string().get(raw_price)) {
-						continue;
-					}
+                std::string_view raw_price;
+                if (bid["price"].get_string().get(raw_price)) {
+                    continue;
+                }
 
-					double bid_price{};
-					auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), bid_price);
-					bid_price *= 100; // in cents
+                double bid_price{};
+                auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), bid_price);
+                bid_price *= 100; // in cents
 
-					std::string_view raw_size{ bid["size"].get_string().value() };
-					long double bid_size{};
-					auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), bid_size);
+                std::string_view raw_size;
+                if (bid["size"].get_string().get(raw_size)) {
+                    continue;
+                }
 
-					if (ec1 == std::errc() && ec2 == std::errc()) {
-						// success path
-						book_snapshot_buffer_accumulator_.bids_[static_cast<int>(bid_price)] = bid_size;
-					}
-				}
-			}
-			else if (key == "asks" && val.type() == simdjson::ondemand::json_type::array) {
-				simdjson::ondemand::array asks_arr{ val.get_array() };
-				for (simdjson::ondemand::object ask : asks_arr) {
-					std::string_view raw_price{ ask["price"].get_string().value() };
-					double ask_price{};
-					auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), ask_price);
-					ask_price *= 100; // in cents
+                long double bid_size{};
+                auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), bid_size);
 
-					std::string_view raw_size{ ask["size"].get_string().value() };
-					long double ask_size{};
-					auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), ask_size);
+                if (ec1 == std::errc() && ec2 == std::errc()) {
+                    book_snapshot_buffer_accumulator_.bids_[static_cast<int>(bid_price)] = bid_size;
+                }
+            }
+        }
+        else if (key == "asks" && val.type() == simdjson::ondemand::json_type::array) {
+            simdjson::ondemand::array asks_arr;
+            if (val.get_array().get(asks_arr)) {
+                continue;
+            }
 
-					if (ec1 == std::errc() && ec2 == std::errc()) {
-						// success path
-						book_snapshot_buffer_accumulator_.asks_[static_cast<int>(ask_price)] = ask_size;
-					}
-				}
-			}
-			else if (key == "price_changes" && val.type() == simdjson::ondemand::json_type::array) {
-				simdjson::ondemand::array price_change_arr{ val.get_array() };
-				for (simdjson::ondemand::object price_change : price_change_arr) {
-					std::string_view raw_asset_id{ price_change["asset_id"].get_string().value() };
-					if (raw_asset_id != target_asset_id_raw_) {
-						continue;
-					}
+            for (auto ask_result : asks_arr) {
+                simdjson::ondemand::object ask;
+                if (ask_result.get(ask)) {
+                    continue;
+                }
 
-					std::string_view raw_price{ price_change["price"].get_string().value() };
-					double price{};
-					auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), price);
-					price *= 100; // in cents
+                std::string_view raw_price;
+                if (ask["price"].get_string().get(raw_price)) {
+                    continue;
+                }
 
-					std::string_view raw_size{ price_change["size"].get_string().value() };
-					long double size{};
-					auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), size);
+                double ask_price{};
+                auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), ask_price);
+                ask_price *= 100; // in cents
 
-					std::string_view raw_side{ price_change["side"].get_string().value() };
-					market::Side side = (raw_side == "BUY") ? market::Side::kBuy : market::Side::kSell;
+                std::string_view raw_size;
+                if (ask["size"].get_string().get(raw_size)) {
+                    continue;
+                }
 
-					std::string_view raw_best_bid{ price_change["best_bid"].get_string().value() };
-					double best_bid{};
-					auto [ptr3, ec3] = std::from_chars(raw_best_bid.data(), raw_best_bid.data() + raw_best_bid.size(), best_bid);
-					best_bid *= 100; // in cents
+                long double ask_size{};
+                auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), ask_size);
 
-					std::string_view raw_best_ask{ price_change["best_ask"].get_string().value() };
-					double best_ask{};
-					auto [ptr4, ec4] = std::from_chars(raw_best_ask.data(), raw_best_ask.data() + raw_best_ask.size(), best_ask);
-					best_ask *= 100; // in cents
+                if (ec1 == std::errc() && ec2 == std::errc()) {
+                    book_snapshot_buffer_accumulator_.asks_[static_cast<int>(ask_price)] = ask_size;
+                }
+            }
+        }
+        else if (key == "price_changes" && val.type() == simdjson::ondemand::json_type::array) {
+            simdjson::ondemand::array price_change_arr;
+            if (val.get_array().get(price_change_arr)) {
+                continue;
+            }
 
-					price_change_buffer_accumulator_.deltas_.emplace_back(
-						market::OrderLevelDelta{
-						.price_ = static_cast<int>(price),
-						.size_ = size,
-						.side_ = side,
-						.best_bid_ = static_cast<int>(best_bid),
-						.best_ask_ = static_cast<int>(best_ask)
-						}
-					);
-				}
-			}
-			// TODO: for now i am just visualizing liquidity, but at some point I should
-			// visualize trades as well, so we need to capture the last_trade_price message
+            for (auto price_change_result : price_change_arr) {
+                simdjson::ondemand::object price_change;
+                if (price_change_result.get(price_change)) {
+                    continue;
+                }
 
-			// ^^^^ i can create a trade ledger (later)
-		}
+                std::string_view raw_asset_id;
+                if (price_change["asset_id"].get_string().get(raw_asset_id)) {
+                    continue;
+                }
+                if (raw_asset_id != target_asset_id_raw_) {
+                    continue;
+                }
 
-		if (current_asset_id_accumulator_ != target_asset_id_raw_) {
-			std::cout << "Unknown asset id\n";
-			return;
-		}
+                std::string_view raw_price;
+                if (price_change["price"].get_string().get(raw_price)) {
+                    continue;
+                }
 
-		switch (event_type_accumulator_) {
-		case EventType::kUnknown:
-			std::cerr << "CRITICAL: Failed to find event_type in json payload, dropping message\n";
-			return;
-		case EventType::kBookSnapshot:
-			book_.applySnapshot(book_snapshot_buffer_accumulator_);
-			break;
-		case EventType::kPriceChange:
-			book_.applyPriceChange(price_change_buffer_accumulator_);
-			break;
-		}
-	}
-	catch (const std::exception& e) {
-		std::cerr << "CRITICAL: Engine error occurred: " << e.what() << ". Dropping\n";
-		return;
-	}
+                double price{};
+                auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), price);
+                price *= 100; // in cents
+
+                std::string_view raw_size;
+                if (price_change["size"].get_string().get(raw_size)) {
+                    continue;
+                }
+
+                long double size{};
+                auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), size);
+
+                std::string_view raw_side;
+                if (price_change["side"].get_string().get(raw_side)) {
+                    continue;
+                }
+                market::Side side = (raw_side == "BUY") ? market::Side::kBuy : market::Side::kSell;
+
+                std::string_view raw_best_bid;
+                if (price_change["best_bid"].get_string().get(raw_best_bid)) {
+                    continue;
+                }
+
+                double best_bid{};
+                auto [ptr3, ec3] = std::from_chars(raw_best_bid.data(), raw_best_bid.data() + raw_best_bid.size(), best_bid);
+                best_bid *= 100; // in cents
+
+                std::string_view raw_best_ask;
+                if (price_change["best_ask"].get_string().get(raw_best_ask)) {
+                    continue;
+                }
+
+                double best_ask{};
+                auto [ptr4, ec4] = std::from_chars(raw_best_ask.data(), raw_best_ask.data() + raw_best_ask.size(), best_ask);
+                best_ask *= 100; // in cents
+
+                price_change_buffer_accumulator_.deltas_.emplace_back(
+                    market::OrderLevelDelta{
+                        .price_ = static_cast<int>(price),
+                        .size_ = size,
+                        .side_ = side,
+                        .best_bid_ = static_cast<int>(best_bid),
+                        .best_ask_ = static_cast<int>(best_ask)
+                    }
+                );
+            }
+        }
+    }
+
+    if (current_asset_id_accumulator_ != target_asset_id_raw_) {
+        std::cout << "Unknown asset id\n";
+        return;
+    }
+
+    switch (event_type_accumulator_) {
+    case EventType::kUnknown:
+        std::cerr << "CRITICAL: Failed to find event_type in json payload, dropping message\n";
+        return;
+    case EventType::kBookSnapshot:
+        book_.applySnapshot(book_snapshot_buffer_accumulator_);
+        break;
+    case EventType::kPriceChange:
+        book_.applyPriceChange(price_change_buffer_accumulator_);
+        break;
+    }
 }

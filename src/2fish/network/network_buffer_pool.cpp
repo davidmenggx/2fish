@@ -28,6 +28,4 @@ void market::NetworkBufferPool::release(MessageBuffer* buffer) {
 	auto idx{ buffer - &(*buffers_)[0] };
 
 	free_buffers_.push(static_cast<std::size_t>(idx));
-
-	std::cout << "We are now at " << std::ssize(free_buffers_) << " buffers\n\n";
 }
