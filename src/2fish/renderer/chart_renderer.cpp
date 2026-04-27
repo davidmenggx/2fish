@@ -69,8 +69,8 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 					y_max = std::max(y_max, candlestick_history_[i].high_);
 				}
 			}
-			y_min = std::min(y_min, active_candle_.low_);
-			y_max = std::max(y_max, active_candle_.high_);
+			y_min = std::min({ y_min, active_candle_.low_, last_trade_price_ });
+			y_max = std::max({ y_max, active_candle_.high_, last_trade_price_ });
 
 			if (y_max == 0) {
 				y_min = 0;
@@ -92,6 +92,25 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 
 			ImPlot::PushPlotClipRect();
 
+			float trade_y_pixels = ImPlot::PlotToPixels(0.0, static_cast<double>(last_trade_price_)).y;
+			ImVec2 plot_pos = ImPlot::GetPlotPos();
+			ImVec2 plot_size = ImPlot::GetPlotSize();
+
+			/*
+			TODO: move these constants away, for now they are:
+			dash_length = 5.0f
+			gap_length = 4.0f
+			line_thickness = 3.0f
+			dash_color = IM_COL32(255, 165, 0, 200)
+			*/
+			// draw a dashed horizontal line representing last trade price
+			for (float x{ plot_pos.x }; x < plot_pos.x + plot_size.x; x += 5.0f + 4.0f) {
+				ImVec2 start(x, trade_y_pixels);
+				ImVec2 end(std::min(x + 5.0f, plot_pos.x + plot_size.x), trade_y_pixels);
+				draw_list->AddLine(start, end, IM_COL32(255, 165, 0, 200), 3.0f);
+			}
+
+			// draw candlesticks
 			for (std::size_t i{ 0 }; i < candlestick_history_.size(); ++i) {
 				drawCandlestick(candlestick_history_[i], draw_list, current_time);
 			}
@@ -163,6 +182,7 @@ void renderer::ChartRenderer::updateCandlesticks(double current_time) {
 		active_candle_.low_ = std::min(active_candle_.low_, trade_accumulator_.price_);
 		active_candle_.close_ = trade_accumulator_.price_;
 		active_candle_.volume_ += trade_accumulator_.size_;
+		last_trade_price_ = trade_accumulator_.price_;
 	}
 }
 

@@ -60,5 +60,6 @@ namespace renderer {
 
 		Candlestick active_candle_{};
 		RingBuffer<Candlestick, kHistorySteps> candlestick_history_{};
+		int last_trade_price_{ 50 };
 	};
 }
