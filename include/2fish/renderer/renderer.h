@@ -1,8 +1,11 @@
 #pragma once
 
 #include "2fish/models/market_snapshot.h"
+#include "2fish/models/trade.h"
 #include "2fish/renderer/chart_renderer.h"
 #include "2fish/utils/triple_buffer.h"
+
+#include "moodycamel/readerwriterqueue.h"
 
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_video.h>
@@ -22,7 +25,8 @@ namespace renderer {
 	class Renderer {
 	public:
 		Renderer(TripleBuffer<MarketSnapshot>& market_snapshot_buffer,
-			const std::string& title, int width, int height, std::atomic<bool>& running);
+            moodycamel::ReaderWriterQueue<market::Trade>& trade_queue,
+            const std::string& title, int width, int height, std::atomic<bool>& running);
 
 		~Renderer();
 

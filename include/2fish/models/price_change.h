@@ -8,7 +8,7 @@ namespace market {
 
 	struct OrderLevelDelta {
 		int price_{}; // cents
-		long double size_{};
+		double size_{};
 		Side side_{};
 		int best_bid_{}; // cents
 		int best_ask_{}; // cents

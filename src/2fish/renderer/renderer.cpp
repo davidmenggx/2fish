@@ -1,7 +1,10 @@
 #include "2fish/models/market_snapshot.h"
+#include "2fish/models/trade.h"
 #include "2fish/renderer/chart_renderer.h"
 #include "2fish/renderer/renderer.h"
 #include "2fish/utils/triple_buffer.h"
+
+#include "moodycamel/readerwriterqueue.h"
 
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_events.h>
@@ -24,8 +27,10 @@
 #include <string>
 
 renderer::Renderer::Renderer(TripleBuffer<MarketSnapshot>& market_snapshot_buffer,
+	moodycamel::ReaderWriterQueue<market::Trade>& trade_queue,
 	const std::string& title, int width, int height, std::atomic<bool>& running)
-	: market_snapshot_buffer_{ market_snapshot_buffer }, running_{ running }
+	: market_snapshot_buffer_{ market_snapshot_buffer }
+	, running_{ running }, chart_renderer_{ trade_queue }
 {
 	if (!SDL_Init(SDL_INIT_VIDEO)) {
 		throw std::runtime_error(std::format("Could not initialize SDL: {}", SDL_GetError()));

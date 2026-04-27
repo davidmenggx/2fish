@@ -4,6 +4,7 @@
 #include "2fish/models/event_type.h"
 #include "2fish/models/market_snapshot.h"
 #include "2fish/models/price_change.h"
+#include "2fish/models/trade.h"
 #include "2fish/network/network_buffer_pool.h"
 #include "2fish/order_book/order_book.h"
 #include "2fish/utils/triple_buffer.h"
@@ -14,6 +15,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <string>
 #include <thread>
 #include <unordered_map>
 
@@ -21,8 +23,9 @@ namespace market {
 	class Engine {
 	public:
 		// TODO: make sure this supports multiple order books, or at least validate the one order book
-		Engine(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue, NetworkBufferPool& buffer_pool,
-			TripleBuffer<MarketSnapshot>& market_snapshot_buffer, std::atomic<bool>& running, std::string target_asset_id_raw);
+		Engine(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue, moodycamel::ReaderWriterQueue<Trade>& trade_queue,
+			NetworkBufferPool& buffer_pool, TripleBuffer<MarketSnapshot>& market_snapshot_buffer, 
+			std::atomic<bool>& running, std::string target_asset_id_raw);
 
 		void start();
 
@@ -42,6 +45,7 @@ namespace market {
 
 		TripleBuffer<MarketSnapshot>& market_snapshot_buffer_;
 		moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue_;
+		moodycamel::ReaderWriterQueue<Trade>& trade_queue_;
 
 		market::NetworkBufferPool& buffer_pool_;
 
@@ -55,6 +59,7 @@ namespace market {
 		std::string current_asset_id_accumulator_{};
 		market::BookSnapshot book_snapshot_buffer_accumulator_{};
 		market::PriceChange price_change_buffer_accumulator_{};
+		market::Trade trade_accumulator_{};
 
 		uint64_t last_message_{}; // milliseconds
 

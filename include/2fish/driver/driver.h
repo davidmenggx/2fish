@@ -23,6 +23,7 @@ public:
 private:
 	market::NetworkBufferPool buffer_pool_{};
 	moodycamel::ReaderWriterQueue<market::MessageBuffer*> market_queue_{};
+	moodycamel::ReaderWriterQueue<market::Trade> trade_queue_{};
 
 	TripleBuffer<MarketSnapshot> market_snapshot_buffer_;
 

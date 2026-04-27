@@ -1,5 +1,7 @@
 #include "2fish/engine/engine.h"
+#include "2fish/models/market_snapshot.h"
 #include "2fish/models/price_change.h"
+#include "2fish/models/trade.h"
 #include "2fish/network/network_buffer_pool.h"
 #include "2fish/order_book/order_book.h"
 #include "2fish/utils/triple_buffer.h"
@@ -23,9 +25,12 @@
 
 #include <intrin0.inl.h>
 
-market::Engine::Engine(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue, NetworkBufferPool& buffer_pool,
-	TripleBuffer<MarketSnapshot>& market_snapshot_buffer, std::atomic<bool>& running, std::string target_asset_id_raw)
-	: market_queue_{ market_queue }, buffer_pool_{ buffer_pool }, market_snapshot_buffer_{ market_snapshot_buffer }
+market::Engine::Engine(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue, 
+    moodycamel::ReaderWriterQueue<Trade>& trade_queue, NetworkBufferPool& buffer_pool, 
+    TripleBuffer<MarketSnapshot>& market_snapshot_buffer,
+    std::atomic<bool>& running, std::string target_asset_id_raw)
+	: market_queue_{ market_queue }, trade_queue_{ trade_queue }
+    , buffer_pool_{ buffer_pool }, market_snapshot_buffer_{ market_snapshot_buffer }
 	, running_{ running }, target_asset_id_raw_{ std::move(target_asset_id_raw) }
 {
 	price_change_buffer_accumulator_.deltas_.reserve(10);
@@ -70,10 +75,10 @@ void market::Engine::run() {
 void market::Engine::publishSnapshot() {
 	MarketSnapshot* buffer{ market_snapshot_buffer_.getWriterBuffer() };
 
-	std::array<long double, 101> book_bids{ book_.getBids() };
+	std::array<double, 101> book_bids{ book_.getBids() };
 	std::copy(book_bids.begin(), book_bids.end(), buffer->bids_.begin());
 
-	std::array<long double, 101> book_asks{ book_.getAsks() };
+	std::array<double, 101> book_asks{ book_.getAsks() };
 	std::copy(book_asks.begin(), book_asks.end(), buffer->asks_.begin());
 
 	auto now = std::chrono::system_clock::now();
@@ -144,7 +149,6 @@ void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
             if (val.get_string().get(event_type_str)) {
                 continue;
             }
-
             event_type_accumulator_ = market::stringToEventType(event_type_str);
         }
         else if (key == "asset_id") {
@@ -166,6 +170,7 @@ void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
                 last_message_ = timestamp;
             }
         }
+        // event_type = book
         else if (key == "bids" && val.type() == simdjson::ondemand::json_type::array) {
             simdjson::ondemand::array bids_arr;
             if (val.get_array().get(bids_arr)) {
@@ -180,12 +185,46 @@ void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
             }
             getAsks(asks_arr);
         }
+        // event_type = price_change
         else if (key == "price_changes" && val.type() == simdjson::ondemand::json_type::array) {
             simdjson::ondemand::array price_change_arr;
             if (val.get_array().get(price_change_arr)) {
                 continue;
             }
             getPriceChanges(price_change_arr);
+        }
+        // event_type = last_trade_price
+        else if (key == "side") {
+            std::string_view trade_side;
+            if (val.get_string().get(trade_side)) {
+                continue;
+            }
+            trade_accumulator_.side_ = (trade_side == "BUY") ? market::Side::kBuy : market::Side::kSell;
+        }
+        else if (key == "size") {
+            std::string_view raw_trade_size;
+            if (val.get_string().get(raw_trade_size)) {
+                continue;
+            }
+            double trade_size{};
+            auto [ptr, ec] = std::from_chars(raw_trade_size.data(), raw_trade_size.data() + raw_trade_size.size(), trade_size);
+
+            if (ec == std::errc()) {
+                trade_accumulator_.size_ = trade_size;
+            }
+        }
+        else if (key == "price") {
+            std::string_view raw_trade_price;
+            if (val.get_string().get(raw_trade_price)) {
+                continue;
+            }
+            double trade_price{};
+            auto [ptr, ec] = std::from_chars(raw_trade_price.data(), raw_trade_price.data() + raw_trade_price.size(), trade_price);
+            trade_price *= 100; // cents
+
+            if (ec == std::errc()) {
+                trade_accumulator_.price_ = static_cast<int>(trade_price);
+            }
         }
     }
 
@@ -203,6 +242,9 @@ void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
         break;
     case EventType::kPriceChange:
         book_.applyPriceChange(price_change_buffer_accumulator_);
+        break;
+    case EventType::kLastTradePrice:
+        trade_queue_.enqueue(trade_accumulator_);
         break;
     }
 }
@@ -228,7 +270,7 @@ void market::Engine::getBids(simdjson::ondemand::array bids_arr) {
             continue;
         }
 
-        long double bid_size{};
+        double bid_size{};
         auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), bid_size);
 
         if (ec1 == std::errc() && ec2 == std::errc()) {
@@ -258,7 +300,7 @@ void market::Engine::getAsks(simdjson::ondemand::array asks_arr) {
             continue;
         }
 
-        long double ask_size{};
+        double ask_size{};
         auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), ask_size);
 
         if (ec1 == std::errc() && ec2 == std::errc()) {
@@ -296,7 +338,7 @@ void market::Engine::getPriceChanges(simdjson::ondemand::array price_change_arr)
             continue;
         }
 
-        long double size{};
+        double size{};
         auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), size);
 
         std::string_view raw_side;
