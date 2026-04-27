@@ -201,7 +201,7 @@ void renderer::Renderer::createRenderPass() {
 void renderer::Renderer::createFramebuffers() {
 	framebuffers_.resize(swapchain_image_views_.size());
 
-	for (size_t i = 0; i < swapchain_image_views_.size(); i++) {
+	for (size_t i{ 0 }; i < swapchain_image_views_.size(); i++) {
 		VkImageView attachments[] = {
 			swapchain_image_views_[i]
 		};
@@ -268,7 +268,7 @@ void renderer::Renderer::run() {
 
 		vkWaitForFences(vkb_device_.device, 1, &in_flight_fence_, VK_TRUE, UINT64_MAX);
 
-		uint32_t image_index;
+		uint32_t image_index{};
 		VkResult result = vkAcquireNextImageKHR(vkb_device_.device, vkb_swapchain_.swapchain, UINT64_MAX,
 			image_available_semaphore_, VK_NULL_HANDLE, &image_index);
 

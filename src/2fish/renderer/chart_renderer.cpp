@@ -76,13 +76,13 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 				y_min = 0;
 				y_max = kPriceLevels;
 			}
+			else {
+				y_min = std::max(0, y_min - 10);
+				y_max = std::min(static_cast<int>(kPriceLevels), y_max + 10);
+			}
 
 			ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoDecorations, ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_NoLabel);
 			ImPlot::SetupAxisLimits(ImAxis_X1, 0, kHistorySteps, ImPlotCond_Always);
-
-			// TODO: merge this conditional
-			y_min = (y_min - 10 >= 0) ? y_min - 10 : 0;
-			y_max = (y_max + 10 <= kPriceLevels) ? y_max + 10 : kPriceLevels;
 
 			ImPlot::SetupAxisLimits(ImAxis_Y1, y_min, y_max, ImPlotCond_Always);
 
@@ -92,45 +92,10 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 
 			ImPlot::PushPlotClipRect();
 
-			// TODO: avoid the alloc here!
-			std::vector<Candlestick> all_candles{};
 			for (std::size_t i{ 0 }; i < candlestick_history_.size(); ++i) {
-				all_candles.push_back(candlestick_history_[i]);
+				drawCandlestick(candlestick_history_[i], draw_list, current_time);
 			}
-			all_candles.push_back(active_candle_);
-
-			for (const auto& candle : all_candles) {
-				double age_sec{ current_time - candle.start_time_ };
-				double x_pos{ kHistorySteps - (age_sec / 0.1) };
-
-				if (x_pos < 0) {
-					continue;
-				}
-
-				ImU32 color{ (candle.close_ >= candle.open_) ? IM_COL32(5, 101, 23, 255) : IM_COL32(222, 26, 36, 255) };
-
-				float half_width{ 4.5f };
-				ImVec2 p_open{ ImPlot::PlotToPixels(x_pos - half_width, candle.open_) };
-				ImVec2 p_close{ ImPlot::PlotToPixels(x_pos + half_width, candle.close_) };
-				ImVec2 p_high{ ImPlot::PlotToPixels(x_pos, candle.high_) };
-				ImVec2 p_low{ ImPlot::PlotToPixels(x_pos, candle.low_) };
-
-				draw_list->AddLine(p_low, p_high, color, 7.5f);
-
-				float top_y{ std::min(p_open.y, p_close.y) };
-				float bottom_y{ std::max(p_open.y, p_close.y) };
-
-				// Even if there is no change, always draw a thin line
-				if (bottom_y - top_y < 5.0f) {
-					bottom_y = top_y + 5.0f;
-				}
-
-				draw_list->AddRectFilled(
-					ImVec2(std::min(p_open.x, p_close.x), top_y),
-					ImVec2(std::max(p_open.x, p_close.x), bottom_y),
-					color
-				);
-			}
+			drawCandlestick(active_candle_, draw_list, current_time);
 
 			ImPlot::PopPlotClipRect();
 
@@ -185,7 +150,6 @@ void renderer::ChartRenderer::updateCandlesticks(double current_time) {
 		candlestick_history_.push(active_candle_);
 
 		int last_price{ active_candle_.close_ };
-
 		active_candle_.start_time_ = current_time;
 		active_candle_.open_ = last_price;
 		active_candle_.high_ = last_price;
@@ -200,4 +164,37 @@ void renderer::ChartRenderer::updateCandlesticks(double current_time) {
 		active_candle_.close_ = trade_accumulator_.price_;
 		active_candle_.volume_ += trade_accumulator_.size_;
 	}
+}
+
+void renderer::ChartRenderer::drawCandlestick(const Candlestick& candle, ImDrawList* draw_list, double current_time) {
+	double age_sec{ current_time - candle.start_time_ };
+	double x_pos{ kHistorySteps - (age_sec / 0.1) };
+
+	if (x_pos < 0) {
+		return;
+	}
+
+	ImU32 color{ (candle.close_ >= candle.open_) ? IM_COL32(5, 101, 23, 255) : IM_COL32(222, 26, 36, 255) };
+
+	float half_width{ 4.5f };
+	ImVec2 p_open{ ImPlot::PlotToPixels(x_pos - half_width, candle.open_) };
+	ImVec2 p_close{ ImPlot::PlotToPixels(x_pos + half_width, candle.close_) };
+	ImVec2 p_high{ ImPlot::PlotToPixels(x_pos, candle.high_) };
+	ImVec2 p_low{ ImPlot::PlotToPixels(x_pos, candle.low_) };
+
+	draw_list->AddLine(p_low, p_high, color, 7.5f);
+
+	float top_y{ std::min(p_open.y, p_close.y) };
+	float bottom_y{ std::max(p_open.y, p_close.y) };
+
+	// Even if there is no change, always draw a thin line
+	if (bottom_y - top_y < 5.0f) {
+		bottom_y = top_y + 5.0f;
+	}
+
+	draw_list->AddRectFilled(
+		ImVec2(std::min(p_open.x, p_close.x), top_y),
+		ImVec2(std::max(p_open.x, p_close.x), bottom_y),
+		color
+	);
 }

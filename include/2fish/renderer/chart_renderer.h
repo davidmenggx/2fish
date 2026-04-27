@@ -23,9 +23,22 @@ namespace renderer {
 		void init();
 
 	private:
+		// OHLC
+		struct Candlestick {
+			double start_time_{}; // imgui::GetTime()
+			int open_{ 50 };
+			int high_{ 50 };
+			int low_{ 50 };
+			int close_{ 50 };
+			double volume_{};
+		};
+
 		// helper utilities for updating internal state:
 		void updateHeatmap(const MarketSnapshot* snapshot, double current_time);
 		void updateCandlesticks(double current_time);
+
+		// helper utilities for rendering
+		void drawCandlestick(const Candlestick& candle, ImDrawList* draw_list, double current_time);
 
 		uint16_t window_width_{};
 		uint16_t window_height_{};
@@ -45,15 +58,6 @@ namespace renderer {
 
 		market::Trade trade_accumulator_;
 
-		// OHLC
-		struct Candlestick {
-			double start_time_{}; // imgui::GetTime()
-			int open_{ 50 };
-			int high_{ 50 };
-			int low_{ 50 };
-			int close_{ 50 };
-			double volume_{};
-		};
 		Candlestick active_candle_{};
 		RingBuffer<Candlestick, kHistorySteps> candlestick_history_{};
 	};
