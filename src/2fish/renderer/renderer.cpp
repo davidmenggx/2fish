@@ -26,6 +26,8 @@
 #include <stdexcept>
 #include <string>
 
+#include <iostream>
+
 renderer::Renderer::Renderer(TripleBuffer<MarketSnapshot>& market_snapshot_buffer,
 	moodycamel::ReaderWriterQueue<market::Trade>& trade_queue,
 	const std::string& title, int width, int height, std::atomic<bool>& running)

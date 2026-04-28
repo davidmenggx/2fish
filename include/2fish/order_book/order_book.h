@@ -1,19 +1,19 @@
 #pragma once
 
-#include "2fish/models/book_snapshot.h"
-#include "2fish/models/price_change.h"
+#include "2fish/models/market_accumulation.h"
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace market {
 	class OrderBook {
 	public:
 		explicit OrderBook() = default;
 
-		void applySnapshot(BookSnapshot& snapshot);
+		void applySnapshot(std::array<double, 101>& snapshot_bids, std::array<double, 101>& snapshot_asks);
 
-		void applyPriceChange(PriceChange& diff);
+		void applyPriceChange(std::vector<OrderLevelDelta>& price_change_deltas);
 
 		// TODO: perhaps remove this? we are only using this for unit tests rn
 		uint64_t getSize(Side side, int price);
@@ -26,8 +26,5 @@ namespace market {
 		// array because the only possible price levels are between $0 and $1 (100 cents)
 		std::array<double, 101> bids_{};
 		std::array<double, 101> asks_{};
-
-		int best_bid_{};
-		int best_ask_{};
 	};
 }

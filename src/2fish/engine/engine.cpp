@@ -1,14 +1,14 @@
 #include "2fish/engine/engine.h"
+#include "2fish/models/market_accumulation.h"
 #include "2fish/models/market_snapshot.h"
-#include "2fish/models/price_change.h"
 #include "2fish/models/trade.h"
+#include "2fish/models/types.h"
 #include "2fish/network/network_buffer_pool.h"
 #include "2fish/order_book/order_book.h"
+#include "2fish/parser/parser_buffer_pool.h"
 #include "2fish/utils/triple_buffer.h"
 
 #include "moodycamel/readerwriterqueue.h"
-
-#include <simdjson.h>
 
 #include <algorithm>
 #include <array>
@@ -21,19 +21,17 @@
 #include <string_view>
 #include <system_error>
 #include <thread>
-#include <utility>
 
 #include <intrin0.inl.h>
 
-market::Engine::Engine(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue, 
-    moodycamel::ReaderWriterQueue<Trade>& trade_queue, NetworkBufferPool& buffer_pool, 
-    TripleBuffer<MarketSnapshot>& market_snapshot_buffer,
-    std::atomic<bool>& running, std::string target_asset_id_raw)
-	: market_queue_{ market_queue }, trade_queue_{ trade_queue }
-    , buffer_pool_{ buffer_pool }, market_snapshot_buffer_{ market_snapshot_buffer }
-	, running_{ running }, target_asset_id_raw_{ std::move(target_asset_id_raw) }
+market::Engine::Engine(moodycamel::ReaderWriterQueue<MarketAccumulation*>& engine_queue,
+	parser::ParserBufferPool& parser_buffer_pool,
+	TripleBuffer<MarketSnapshot>& market_snapshot_buffer,
+	std::atomic<bool>& running, std::string target_asset_id_)
+	: engine_queue_{ engine_queue }, parser_buffer_pool_{ parser_buffer_pool }
+	, market_snapshot_buffer_{ market_snapshot_buffer }
+	, running_{ running }, target_asset_id_{ target_asset_id_ }
 {
-	price_change_buffer_accumulator_.deltas_.reserve(10);
 }
 
 void market::Engine::start() {
@@ -41,35 +39,35 @@ void market::Engine::start() {
 }
 
 void market::Engine::run() {
-	market::MessageBuffer* message{};
-		int messages_since_write{};
+	market::MarketAccumulation* accumulation{};
+	int messages_since_write{};
 
-		while (running_) {
-			if (!market_queue_.try_dequeue(message)) {
-				if (messages_since_write > 0) {
-					publishSnapshot();
-					messages_since_write = 0;
-				}
-
-				_mm_pause(); // spin wait
-				continue;
-			}
-
-			parseAndApplyUpdates(message);
-
-			buffer_pool_.release(message);
-
-			if (messages_since_write > 100) {
-				// if there is a big backlog of messages (high market activity),
-				// just force a write periodically (every 100 messages) so the GUI stays live
+	while (running_) {
+		if (!engine_queue_.try_dequeue(accumulation)) {
+			if (messages_since_write > 0) {
 				publishSnapshot();
 				messages_since_write = 0;
 			}
 
-			++messages_since_write;
+			_mm_pause(); // spin wait
+			continue;
 		}
 
-		std::cout << "Stop message received, order book manager stopping\n";
+		applyUpdates(accumulation);
+
+		parser_buffer_pool_.release(accumulation);
+
+		++messages_since_write;
+
+		if (messages_since_write > 100) {
+			// if there is a big backlog of messages (high market activity),
+			// just force a write periodically (every 100 messages) so the GUI stays live
+			publishSnapshot();
+			messages_since_write = 0;
+		}
+	}
+
+	std::cout << "Stop message received, market engine stopping\n";
 }
 
 void market::Engine::publishSnapshot() {
@@ -91,288 +89,21 @@ void market::Engine::publishSnapshot() {
 	market_snapshot_buffer_.publishWriterBuffer();
 }
 
-void market::Engine::parseAndApplyUpdates(market::MessageBuffer* message) {
-    // simdjson expects a certain amount of padding for safe simd parsing
-    simdjson::padded_string_view psv(
-        reinterpret_cast<const char*>(message->data_),
-        message->message_size_,
-        kBufferSize
-    );
+void market::Engine::applyUpdates(market::MarketAccumulation* accumulation) {
+	if (accumulation->asset_id_ != target_asset_id_) {
+		std::cerr << "Unknown asset id\n";
+		return;
+	}
 
-    simdjson::ondemand::document doc;
-    if (parser_.iterate(psv).get(doc)) {
-        std::cerr << "CRITICAL: Failed to parse JSON document. Dropping\n";
-        return;
-    }
-
-    simdjson::ondemand::json_type type;
-    if (doc.type().get(type)) {
-        std::cerr << "Failed to get document type\n";
-        return;
-    }
-
-    simdjson::ondemand::object root;
-    if (type == simdjson::ondemand::json_type::array) {
-        // there are some weird edge cases when the entire object is wrapped in an array
-        simdjson::ondemand::array arr;
-        if (doc.get_array().get(arr)) return;
-
-        simdjson::ondemand::value first_element;
-        if (arr.at(0).get(first_element)) return;
-
-        if (first_element.get_object().get(root)) return;
-    }
-    else {
-        if (doc.get_object().get(root)) return;
-    }
-
-    // reset the state between parses
-    event_type_accumulator_ = market::EventType::kUnknown;
-    book_snapshot_buffer_accumulator_.asks_.fill(0);
-    book_snapshot_buffer_accumulator_.bids_.fill(0);
-    price_change_buffer_accumulator_.deltas_.clear();
-
-    // speculatively build/prepare the schemas to be sent to the order book 
-    for (auto field : root) {
-        std::string_view key;
-        if (field.unescaped_key().get(key)) {
-            continue;
-        }
-
-        simdjson::ondemand::value val;
-        if (field.value().get(val)) {
-            continue;
-        }
-
-        if (key == "event_type") {
-            std::string_view event_type_str;
-            if (val.get_string().get(event_type_str)) {
-                continue;
-            }
-            event_type_accumulator_ = market::stringToEventType(event_type_str);
-        }
-        else if (key == "asset_id") {
-            std::string_view asset_id_str;
-            if (val.get_string().get(asset_id_str)) {
-                continue;
-            }
-            current_asset_id_accumulator_ = asset_id_str;
-        }
-        else if (key == "timestamp") {
-            std::string_view raw_timestamp;
-            if (val.get_string().get(raw_timestamp)) {
-                continue;
-            }
-            uint64_t timestamp{};
-            auto [ptr, ec] = std::from_chars(raw_timestamp.data(), raw_timestamp.data() + raw_timestamp.size(), timestamp);
-
-            if (ec == std::errc()) {
-                last_message_ = timestamp;
-            }
-        }
-        // event_type = book
-        else if (key == "bids" && val.type() == simdjson::ondemand::json_type::array) {
-            simdjson::ondemand::array bids_arr;
-            if (val.get_array().get(bids_arr)) {
-                continue;
-            }
-            getBids(bids_arr);
-        }
-        else if (key == "asks" && val.type() == simdjson::ondemand::json_type::array) {
-            simdjson::ondemand::array asks_arr;
-            if (val.get_array().get(asks_arr)) {
-                continue;
-            }
-            getAsks(asks_arr);
-        }
-        // event_type = price_change
-        else if (key == "price_changes" && val.type() == simdjson::ondemand::json_type::array) {
-            simdjson::ondemand::array price_change_arr;
-            if (val.get_array().get(price_change_arr)) {
-                continue;
-            }
-            getPriceChanges(price_change_arr);
-        }
-        // event_type = last_trade_price
-        else if (key == "side") {
-            std::string_view trade_side;
-            if (val.get_string().get(trade_side)) {
-                continue;
-            }
-            trade_accumulator_.side_ = (trade_side == "BUY") ? market::Side::kBuy : market::Side::kSell;
-        }
-        else if (key == "size") {
-            std::string_view raw_trade_size;
-            if (val.get_string().get(raw_trade_size)) {
-                continue;
-            }
-            double trade_size{};
-            auto [ptr, ec] = std::from_chars(raw_trade_size.data(), raw_trade_size.data() + raw_trade_size.size(), trade_size);
-
-            if (ec == std::errc()) {
-                trade_accumulator_.size_ = trade_size;
-            }
-        }
-        else if (key == "price") {
-            std::string_view raw_trade_price;
-            if (val.get_string().get(raw_trade_price)) {
-                continue;
-            }
-            double trade_price{};
-            auto [ptr, ec] = std::from_chars(raw_trade_price.data(), raw_trade_price.data() + raw_trade_price.size(), trade_price);
-            trade_price *= 100; // cents
-
-            if (ec == std::errc()) {
-                trade_accumulator_.price_ = static_cast<int>(trade_price);
-            }
-        }
-    }
-
-    if (current_asset_id_accumulator_ != target_asset_id_raw_) {
-        std::cout << "Unknown asset id\n";
-        return;
-    }
-
-    switch (event_type_accumulator_) {
-    case EventType::kUnknown:
-        std::cerr << "CRITICAL: Failed to find event_type in json payload, dropping message\n";
-        return;
-    case EventType::kBookSnapshot:
-        book_.applySnapshot(book_snapshot_buffer_accumulator_);
-        break;
-    case EventType::kPriceChange:
-        book_.applyPriceChange(price_change_buffer_accumulator_);
-        break;
-    case EventType::kLastTradePrice:
-        trade_queue_.enqueue(trade_accumulator_);
-        break;
-    }
-}
-
-void market::Engine::getBids(simdjson::ondemand::array bids_arr) {
-    for (auto bid_result : bids_arr) {
-        simdjson::ondemand::object bid;
-        if (bid_result.get(bid)) {
-            continue;
-        }
-
-        std::string_view raw_price;
-        if (bid["price"].get_string().get(raw_price)) {
-            continue;
-        }
-
-        double bid_price{};
-        auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), bid_price);
-        bid_price *= 100; // in cents
-
-        std::string_view raw_size;
-        if (bid["size"].get_string().get(raw_size)) {
-            continue;
-        }
-
-        double bid_size{};
-        auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), bid_size);
-
-        if (ec1 == std::errc() && ec2 == std::errc()) {
-            book_snapshot_buffer_accumulator_.bids_[static_cast<int>(bid_price)] = bid_size;
-        }
-    }
-}
-
-void market::Engine::getAsks(simdjson::ondemand::array asks_arr) {
-    for (auto ask_result : asks_arr) {
-        simdjson::ondemand::object ask;
-        if (ask_result.get(ask)) {
-            continue;
-        }
-
-        std::string_view raw_price;
-        if (ask["price"].get_string().get(raw_price)) {
-            continue;
-        }
-
-        double ask_price{};
-        auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), ask_price);
-        ask_price *= 100; // in cents
-
-        std::string_view raw_size;
-        if (ask["size"].get_string().get(raw_size)) {
-            continue;
-        }
-
-        double ask_size{};
-        auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), ask_size);
-
-        if (ec1 == std::errc() && ec2 == std::errc()) {
-            book_snapshot_buffer_accumulator_.asks_[static_cast<int>(ask_price)] = ask_size;
-        }
-    }
-}
-
-void market::Engine::getPriceChanges(simdjson::ondemand::array price_change_arr) {
-    for (auto price_change_result : price_change_arr) {
-        simdjson::ondemand::object price_change;
-        if (price_change_result.get(price_change)) {
-            continue;
-        }
-
-        std::string_view raw_asset_id;
-        if (price_change["asset_id"].get_string().get(raw_asset_id)) {
-            continue;
-        }
-        if (raw_asset_id != target_asset_id_raw_) {
-            continue;
-        }
-
-        std::string_view raw_price;
-        if (price_change["price"].get_string().get(raw_price)) {
-            continue;
-        }
-
-        double price{};
-        auto [ptr1, ec1] = std::from_chars(raw_price.data(), raw_price.data() + raw_price.size(), price);
-        price *= 100; // in cents
-
-        std::string_view raw_size;
-        if (price_change["size"].get_string().get(raw_size)) {
-            continue;
-        }
-
-        double size{};
-        auto [ptr2, ec2] = std::from_chars(raw_size.data(), raw_size.data() + raw_size.size(), size);
-
-        std::string_view raw_side;
-        if (price_change["side"].get_string().get(raw_side)) {
-            continue;
-        }
-        market::Side side = (raw_side == "BUY") ? market::Side::kBuy : market::Side::kSell;
-
-        std::string_view raw_best_bid;
-        if (price_change["best_bid"].get_string().get(raw_best_bid)) {
-            continue;
-        }
-
-        double best_bid{};
-        auto [ptr3, ec3] = std::from_chars(raw_best_bid.data(), raw_best_bid.data() + raw_best_bid.size(), best_bid);
-        best_bid *= 100; // in cents
-
-        std::string_view raw_best_ask;
-        if (price_change["best_ask"].get_string().get(raw_best_ask)) {
-            continue;
-        }
-
-        double best_ask{};
-        auto [ptr4, ec4] = std::from_chars(raw_best_ask.data(), raw_best_ask.data() + raw_best_ask.size(), best_ask);
-        best_ask *= 100; // in cents
-
-        price_change_buffer_accumulator_.deltas_.emplace_back(
-            market::OrderLevelDelta{
-                .price_ = static_cast<int>(price),
-                .size_ = size,
-                .side_ = side,
-                .best_bid_ = static_cast<int>(best_bid),
-                .best_ask_ = static_cast<int>(best_ask)
-            }
-        );
-    }
+	switch (accumulation->type_) {
+	case EventType::UNKNOWN:
+		std::cerr << "CRITICAL: Failed to find event_type in json payload, dropping message\n";
+		return;
+	case EventType::BOOK_SNAPSHOT:
+		book_.applySnapshot(accumulation->snapshot_bids_, accumulation->snapshot_asks_);
+		break;
+	case EventType::PRICE_CHANGE:
+		book_.applyPriceChange(accumulation->price_change_deltas_);
+		break;
+	}
 }

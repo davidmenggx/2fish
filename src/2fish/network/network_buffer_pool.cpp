@@ -5,9 +5,9 @@
 #include <memory>
 
 market::NetworkBufferPool::NetworkBufferPool() 
-	: buffers_{ std::make_unique<std::array<MessageBuffer, kBufferCount>>() }
+	: buffers_{ std::make_unique<std::array<MessageBuffer, NETWORK_BUFFER_COUNT>>() }
 {
-	for (std::size_t i{ 0 }; i < kBufferCount; ++i) {
+	for (std::size_t i{ 0 }; i < NETWORK_BUFFER_COUNT; ++i) {
 		free_buffers_.push(i);
 	}
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "2fish/models/price_change.h"
+#include "2fish/models/types.h"
 
 namespace market {
 	struct Trade {

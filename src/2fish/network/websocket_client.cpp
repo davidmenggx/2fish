@@ -22,7 +22,6 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <utility>
 
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
@@ -30,10 +29,10 @@ namespace net = boost::asio;
 namespace ssl = boost::asio::ssl;
 using tcp = boost::asio::ip::tcp;
 
-market::WebsocketClient::WebsocketClient(moodycamel::ReaderWriterQueue<MessageBuffer*>& market_queue,
-	NetworkBufferPool& buffer_pool, std::atomic<bool>& running, std::string target_asset_id_raw)
-	: market_queue_{ market_queue }, buffer_pool_{ buffer_pool }
-	, running_{ running }, target_asset_id_raw_{ std::move(target_asset_id_raw) }
+market::WebsocketClient::WebsocketClient(moodycamel::ReaderWriterQueue<MessageBuffer*>& network_queue,
+	NetworkBufferPool& network_buffer_pool, std::atomic<bool>& running, std::string target_asset_id_raw)
+	: network_queue_{ network_queue }, network_buffer_pool_{ network_buffer_pool }
+	, running_{ running }, target_asset_id_raw_{ target_asset_id_raw }
 {
 }
 
@@ -92,14 +91,14 @@ void market::WebsocketClient::run() {
 		auto data = boost::beast::buffers_front(fb.data());
 		std::size_t msg_size_bytes{ data.size() };
 
-		if (msg_size_bytes > kMaxMessageSize) {
+		if (msg_size_bytes > NETWORK_MAX_MSG_SIZE) {
 			std::cerr << std::format("CRITICAL: message exceeded max message size {}! Message is {} bytes, dropping!\n",
-				kMaxMessageSize, msg_size_bytes);
+				NETWORK_MAX_MSG_SIZE, msg_size_bytes);
 			fb.consume(fb.size());
 			continue;
 		}
 
-		market::MessageBuffer* buffer{ buffer_pool_.acquire() };
+		market::MessageBuffer* buffer{ network_buffer_pool_.acquire() };
 		if (!buffer) {
 			std::cerr << "CRITICAL: Out of network buffers, dropping!\n";
 			fb.consume(fb.size());
@@ -115,7 +114,7 @@ void market::WebsocketClient::run() {
 
 		fb.consume(fb.size());
 
-		market_queue_.enqueue(buffer);
+		network_queue_.enqueue(buffer);
 	}
 
 	std::cout << "Stop message received, websocket client stopping\n";
