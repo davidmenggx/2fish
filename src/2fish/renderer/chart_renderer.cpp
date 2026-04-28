@@ -54,7 +54,14 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 			ImPlot::PushColormap(bookmap_colormap_);
 		}
 
+		float old_scale = ImGui::GetFont()->Scale;
+		ImGui::GetFont()->Scale *= 1.5f; // TODO: more robust font size scaling
+		ImGui::PushFont(ImGui::GetFont());
+
 		ImPlotFlags plot_flags = ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoFrame;
+
+		ImVec2 plot_pos;
+		ImVec2 plot_size;
 
 		if (ImPlot::BeginPlot("Orderbook", ImVec2(-1, -1), plot_flags)) {
 
@@ -77,14 +84,16 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 				y_max = kPriceLevels;
 			}
 			else {
-				y_min = std::max(0, y_min - 10);
-				y_max = std::min(static_cast<int>(kPriceLevels), y_max + 10);
+				y_min = std::max(0, y_min - chart_zoom_gap_);
+				y_max = std::min(static_cast<int>(kPriceLevels), y_max + chart_zoom_gap_);
 			}
 
-			ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoDecorations, ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_NoLabel);
+			ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoDecorations, ImPlotAxisFlags_Opposite);
 			ImPlot::SetupAxisLimits(ImAxis_X1, 0, kHistorySteps, ImPlotCond_Always);
-
 			ImPlot::SetupAxisLimits(ImAxis_Y1, y_min, y_max, ImPlotCond_Always);
+
+			plot_pos = ImPlot::GetPlotPos();
+			plot_size = ImPlot::GetPlotSize();
 
 			ImPlot::PlotHeatmap("Liquidity", heatmap_render_buffer_.data(), kPriceLevels, kHistorySteps, 0.0, 1.0, nullptr, ImPlotPoint(0, 0), ImPlotPoint(kHistorySteps, kPriceLevels));
 
@@ -93,16 +102,7 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 			ImPlot::PushPlotClipRect();
 
 			float trade_y_pixels = ImPlot::PlotToPixels(0.0, static_cast<double>(last_trade_price_)).y;
-			ImVec2 plot_pos = ImPlot::GetPlotPos();
-			ImVec2 plot_size = ImPlot::GetPlotSize();
 
-			/*
-			TODO: move these constants away, for now they are:
-			dash_length = 5.0f
-			gap_length = 4.0f
-			line_thickness = 3.0f
-			dash_color = IM_COL32(255, 165, 0, 200)
-			*/
 			// draw a dashed horizontal line representing last trade price
 			for (float x{ plot_pos.x }; x < plot_pos.x + plot_size.x; x += 5.0f + 4.0f) {
 				ImVec2 start(x, trade_y_pixels);
@@ -117,13 +117,47 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 			drawCandlestick(active_candle_, draw_list, current_time);
 
 			ImPlot::PopPlotClipRect();
-
 			ImPlot::EndPlot();
+		}
+
+		// button overlay
+		ImVec2 plot_max = ImVec2(plot_pos.x + plot_size.x, plot_pos.y + plot_size.y);
+
+		// only show the buttons when the user is hovering over the chart
+		if (ImGui::IsMouseHoveringRect(plot_pos, plot_max)) {
+
+			// TODO: move these out
+			float button_width{ 80.0f };
+			float button_height{ 40.0f };
+			float spacing{ ImGui::GetStyle().ItemSpacing.x };
+			float total_width{ (button_width * 2) + spacing };
+
+			ImVec2 button_start_pos = ImVec2(
+				plot_pos.x + (plot_size.x - total_width) * 0.5f,
+				plot_max.y - button_height - 20.0f
+			);
+
+			ImGui::SetCursorScreenPos(button_start_pos);
+
+			// TODO: move these out
+			int zoom_step{ 3 };
+
+			if (ImGui::Button("+", ImVec2(button_width, button_height))) {
+				chart_zoom_gap_ = std::max(0, chart_zoom_gap_ - zoom_step);
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("-", ImVec2(button_width, button_height))) {
+				chart_zoom_gap_ += zoom_step;
+			}
 		}
 
 		if (bookmap_colormap_ != -1) ImPlot::PopColormap();
 		ImPlot::PopStyleVar();
 		ImPlot::PopStyleColor(2);
+		ImGui::GetFont()->Scale = old_scale;
+		ImGui::PopFont();
 	}
 	ImGui::End();
 }
