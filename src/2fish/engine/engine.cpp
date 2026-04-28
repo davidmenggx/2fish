@@ -100,7 +100,7 @@ void market::Engine::applyUpdates(market::MarketAccumulation* accumulation) {
 
 	switch (accumulation->type_) {
 	case EventType::UNKNOWN:
-		std::cerr << "CRITICAL: Failed to find event_type in json payload, dropping message\n";
+		std::cerr << "Failed to find event_type in json payload, dropping message\n";
 		return;
 	case EventType::BOOK_SNAPSHOT:
 		book_.applySnapshot(accumulation->snapshot_bids_, accumulation->snapshot_asks_);

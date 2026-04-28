@@ -30,7 +30,8 @@ if(WIN32)
     target_compile_definitions(2fish_core PUBLIC -D_WIN32_WINNT=0x0A00)
 endif()
 
-add_executable(2fish 2fish/main.cpp) 
+add_executable(2fish 2fish/main.cpp)
+target_compile_features(2fish PUBLIC cxx_std_20)
 target_link_libraries(2fish PRIVATE 2fish_core)
 
 target_include_directories(2fish PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

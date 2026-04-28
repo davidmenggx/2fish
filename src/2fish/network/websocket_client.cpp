@@ -85,14 +85,14 @@ void market::WebsocketClient::run() {
 			ws.read(fb, ec);
 
 			if (ec) {
-				throw std::runtime_error("CRITICAL: unexpected error when reading websocket, aborting!");
+				throw std::runtime_error("CRITICAL: unexpected error when reading websocket, aborting");
 			}
 
 			auto data = boost::beast::buffers_front(fb.data());
 			std::size_t msg_size_bytes{ data.size() };
 
 			if (msg_size_bytes > NETWORK_MAX_MSG_SIZE) {
-				std::cerr << std::format("CRITICAL: message exceeded max message size {}! Message is {} bytes, dropping!\n",
+				std::cerr << std::format("CRITICAL: message exceeded max message size {}. Message is {} bytes, dropping\n",
 					NETWORK_MAX_MSG_SIZE, msg_size_bytes);
 				fb.consume(fb.size());
 				continue;
