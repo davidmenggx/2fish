@@ -22,11 +22,11 @@
 
 #include <atomic>
 #include <cstdint>
+#include <exception>
 #include <format>
+#include <iostream>
 #include <stdexcept>
 #include <string>
-
-#include <iostream>
 
 renderer::Renderer::Renderer(TripleBuffer<MarketSnapshot>& market_snapshot_buffer,
 	moodycamel::ReaderWriterQueue<market::Trade>& trade_queue,
@@ -196,7 +196,7 @@ void renderer::Renderer::createRenderPass() {
 	render_pass_info.pDependencies = &dependency;
 
 	if (vkCreateRenderPass(vkb_device_.device, &render_pass_info, nullptr, &render_pass_) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create Render Pass!");
+		throw std::runtime_error("Failed to create Render Pass");
 	}
 }
 
@@ -258,105 +258,112 @@ void renderer::Renderer::createCommandAndSyncObjects() {
 }
 
 void renderer::Renderer::run() {
-	SDL_Event event;
+	try {
+		SDL_Event event;
 
-	while (running_) {
-		while (SDL_PollEvent(&event)) {
-			ImGui_ImplSDL3_ProcessEvent(&event);
-			if (event.type == SDL_EVENT_QUIT) {
-				running_.store(false, std::memory_order_relaxed);
+		while (running_) {
+			while (SDL_PollEvent(&event)) {
+				ImGui_ImplSDL3_ProcessEvent(&event);
+				if (event.type == SDL_EVENT_QUIT) {
+					running_.store(false, std::memory_order_relaxed);
+				}
+			}
+
+			vkWaitForFences(vkb_device_.device, 1, &in_flight_fence_, VK_TRUE, UINT64_MAX);
+
+			uint32_t image_index{};
+			VkResult result = vkAcquireNextImageKHR(vkb_device_.device, vkb_swapchain_.swapchain, UINT64_MAX,
+				image_available_semaphore_, VK_NULL_HANDLE, &image_index);
+
+			if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+				recreateSwapchain();
+				continue;
+			}
+			else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+				throw std::runtime_error("Failed to acquire swapchain image");
+			}
+
+			vkResetFences(vkb_device_.device, 1, &in_flight_fence_);
+
+			vkResetCommandBuffer(command_buffer_, 0);
+
+			ImGui_ImplVulkan_NewFrame();
+			ImGui_ImplSDL3_NewFrame();
+			ImGui::NewFrame();
+
+			// build the charts
+			const MarketSnapshot* snapshot{ market_snapshot_buffer_.getReaderBuffer() };
+			chart_renderer_.updateAndDraw(snapshot);
+
+			ImGui::Render();
+			ImDrawData* draw_data = ImGui::GetDrawData();
+
+			VkCommandBufferBeginInfo begin_info = {};
+			begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+			vkBeginCommandBuffer(command_buffer_, &begin_info);
+
+			VkRenderPassBeginInfo render_pass_info = {};
+			render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+			render_pass_info.renderPass = render_pass_;
+			render_pass_info.framebuffer = framebuffers_[image_index];
+			render_pass_info.renderArea.offset = { 0, 0 };
+			render_pass_info.renderArea.extent = vkb_swapchain_.extent;
+
+			VkClearValue clear_color = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
+			render_pass_info.clearValueCount = 1;
+			render_pass_info.pClearValues = &clear_color;
+
+			vkCmdBeginRenderPass(command_buffer_, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+
+			ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer_);
+
+			vkCmdEndRenderPass(command_buffer_);
+			vkEndCommandBuffer(command_buffer_);
+
+			// vulkan submit
+			VkSubmitInfo submit_info = {};
+			submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+			VkSemaphore wait_semaphores[] = { image_available_semaphore_ };
+			VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+			submit_info.waitSemaphoreCount = 1;
+			submit_info.pWaitSemaphores = wait_semaphores;
+			submit_info.pWaitDstStageMask = wait_stages;
+			submit_info.commandBufferCount = 1;
+			submit_info.pCommandBuffers = &command_buffer_;
+
+			VkSemaphore signal_semaphores[] = { render_finished_semaphore_ };
+			submit_info.signalSemaphoreCount = 1;
+			submit_info.pSignalSemaphores = signal_semaphores;
+
+			vkQueueSubmit(graphics_queue_, 1, &submit_info, in_flight_fence_);
+
+			VkPresentInfoKHR present_info = {};
+			present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+			present_info.waitSemaphoreCount = 1;
+			present_info.pWaitSemaphores = signal_semaphores;
+
+			VkSwapchainKHR swapchains[] = { vkb_swapchain_.swapchain };
+			present_info.swapchainCount = 1;
+			present_info.pSwapchains = swapchains;
+			present_info.pImageIndices = &image_index;
+
+			result = vkQueuePresentKHR(graphics_queue_, &present_info);
+
+			if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+				recreateSwapchain();
+			}
+			else if (result != VK_SUCCESS) {
+				throw std::runtime_error("Failed to present swapchain image");
 			}
 		}
-
-		vkWaitForFences(vkb_device_.device, 1, &in_flight_fence_, VK_TRUE, UINT64_MAX);
-
-		uint32_t image_index{};
-		VkResult result = vkAcquireNextImageKHR(vkb_device_.device, vkb_swapchain_.swapchain, UINT64_MAX,
-			image_available_semaphore_, VK_NULL_HANDLE, &image_index);
-
-		if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-			recreateSwapchain();
-			continue;
-		}
-		else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-			throw std::runtime_error("Failed to acquire swapchain image!");
-		}
-
-		vkResetFences(vkb_device_.device, 1, &in_flight_fence_);
-
-		vkResetCommandBuffer(command_buffer_, 0);
-
-		ImGui_ImplVulkan_NewFrame();
-		ImGui_ImplSDL3_NewFrame();
-		ImGui::NewFrame();
-
-		// build the charts
-		const MarketSnapshot* snapshot{ market_snapshot_buffer_.getReaderBuffer() };
-		chart_renderer_.updateAndDraw(snapshot);
-
-		ImGui::Render();
-		ImDrawData* draw_data = ImGui::GetDrawData();
-
-		VkCommandBufferBeginInfo begin_info = {};
-		begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		vkBeginCommandBuffer(command_buffer_, &begin_info);
-
-		VkRenderPassBeginInfo render_pass_info = {};
-		render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		render_pass_info.renderPass = render_pass_;
-		render_pass_info.framebuffer = framebuffers_[image_index];
-		render_pass_info.renderArea.offset = { 0, 0 };
-		render_pass_info.renderArea.extent = vkb_swapchain_.extent;
-
-		VkClearValue clear_color = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
-		render_pass_info.clearValueCount = 1;
-		render_pass_info.pClearValues = &clear_color;
-
-		vkCmdBeginRenderPass(command_buffer_, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-
-		ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer_);
-
-		vkCmdEndRenderPass(command_buffer_);
-		vkEndCommandBuffer(command_buffer_);
-
-		// vulkan submit
-		VkSubmitInfo submit_info = {};
-		submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-		VkSemaphore wait_semaphores[] = { image_available_semaphore_ };
-		VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-		submit_info.waitSemaphoreCount = 1;
-		submit_info.pWaitSemaphores = wait_semaphores;
-		submit_info.pWaitDstStageMask = wait_stages;
-		submit_info.commandBufferCount = 1;
-		submit_info.pCommandBuffers = &command_buffer_;
-
-		VkSemaphore signal_semaphores[] = { render_finished_semaphore_ };
-		submit_info.signalSemaphoreCount = 1;
-		submit_info.pSignalSemaphores = signal_semaphores;
-
-		vkQueueSubmit(graphics_queue_, 1, &submit_info, in_flight_fence_);
-
-		VkPresentInfoKHR present_info = {};
-		present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-		present_info.waitSemaphoreCount = 1;
-		present_info.pWaitSemaphores = signal_semaphores;
-
-		VkSwapchainKHR swapchains[] = { vkb_swapchain_.swapchain };
-		present_info.swapchainCount = 1;
-		present_info.pSwapchains = swapchains;
-		present_info.pImageIndices = &image_index;
-
-		result = vkQueuePresentKHR(graphics_queue_, &present_info);
-
-		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-			recreateSwapchain();
-		}
-		else if (result != VK_SUCCESS) {
-			throw std::runtime_error("Failed to present swapchain image");
-		}
+	}
+	catch (const std::exception& e) {
+		std::cerr << std::format("CRITICAL: Unexpected error in renderer: {}\n", e.what());
+		throw;
 	}
 }
+
 void renderer::Renderer::recreateSwapchain() {
 	int width{ 0 };
 	int height{ 0 };
@@ -386,7 +393,7 @@ void renderer::Renderer::recreateSwapchain() {
 		.build();
 
 	if (!vkb_swapchain_ret) {
-		throw std::runtime_error("Failed to recreate swapchain!");
+		throw std::runtime_error("Failed to recreate swapchain");
 	}
 
 	vkb::destroy_swapchain(vkb_swapchain_);
@@ -394,7 +401,7 @@ void renderer::Renderer::recreateSwapchain() {
 
 	auto views_ret = vkb_swapchain_.get_image_views();
 	if (!views_ret) {
-		throw std::runtime_error("Failed to get new swapchain image views!");
+		throw std::runtime_error("Failed to get new swapchain image views");
 	}
 	swapchain_image_views_ = views_ret.value();
 

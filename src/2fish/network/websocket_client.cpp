@@ -16,12 +16,11 @@
 
 #include <atomic>
 #include <cstdint>
+#include <exception>
 #include <format>
 #include <iostream>
 #include <stdexcept>
 #include <string>
-#include <string_view>
-#include <thread>
 
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
@@ -41,81 +40,87 @@ void market::WebsocketClient::start() {
 }
 
 void market::WebsocketClient::run() {
-	std::string host{ "ws-subscriptions-clob.polymarket.com" };
-	std::string port{ "443" };
-	std::string path{ "/ws/market" };
+	try {
+		std::string host{ "ws-subscriptions-clob.polymarket.com" };
+		std::string port{ "443" };
+		std::string path{ "/ws/market" };
 
-	net::io_context ioc{};
-	ssl::context ctx{ ssl::context::tlsv12_client };
+		net::io_context ioc{};
+		ssl::context ctx{ ssl::context::tlsv12_client };
 
-	// TODO: verify the end target
-	ctx.set_verify_mode(ssl::verify_none);
+		// TODO: verify the end target
+		ctx.set_verify_mode(ssl::verify_none);
 
-	tcp::resolver resolver{ ioc };
-	websocket::stream<ssl::stream<tcp::socket>> ws{ ioc, ctx };
+		tcp::resolver resolver{ ioc };
+		websocket::stream<ssl::stream<tcp::socket>> ws{ ioc, ctx };
 
-	const auto results = resolver.resolve(host, port);
+		const auto results = resolver.resolve(host, port);
 
-	auto ep = net::connect(ws.next_layer().next_layer(), results);
+		auto ep = net::connect(ws.next_layer().next_layer(), results);
 
-	if (!SSL_set_tlsext_host_name(ws.next_layer().native_handle(), host.c_str())) {
-		throw boost::system::system_error{ static_cast<int>(::ERR_get_error()), net::error::get_ssl_category() };
-	}
-
-	ws.next_layer().handshake(ssl::stream_base::client);
-
-	host += ':' + std::to_string(ep.port());
-
-	ws.handshake(host, path);
-
-	std::cout << std::format("Connected to wss://{}{}\n\n", host, path);
-
-	// hard coded for now, test market
-	std::string payload{ std::format(R"({{"assets_ids": ["{}"], "type": "market", "level": 2}})", target_asset_id_raw_) };
-
-	ws.text(true);
-	ws.write(net::buffer(payload));
-
-	std::cout << std::format("Sent subscription to wss://{}{}\n\n", host, path);
-
-	beast::flat_buffer fb;
-
-	while (running_) {
-		boost::system::error_code ec;
-		ws.read(fb, ec);
-
-		if (ec) {
-			throw std::runtime_error("CRITICAL: unexpected error when reading websocket, aborting!");
+		if (!SSL_set_tlsext_host_name(ws.next_layer().native_handle(), host.c_str())) {
+			throw boost::system::system_error{ static_cast<int>(::ERR_get_error()), net::error::get_ssl_category() };
 		}
 
-		auto data = boost::beast::buffers_front(fb.data());
-		std::size_t msg_size_bytes{ data.size() };
+		ws.next_layer().handshake(ssl::stream_base::client);
 
-		if (msg_size_bytes > NETWORK_MAX_MSG_SIZE) {
-			std::cerr << std::format("CRITICAL: message exceeded max message size {}! Message is {} bytes, dropping!\n",
-				NETWORK_MAX_MSG_SIZE, msg_size_bytes);
+		host += ':' + std::to_string(ep.port());
+
+		ws.handshake(host, path);
+
+		std::cout << std::format("Connected to wss://{}{}\n\n", host, path);
+
+		// hard coded for now, test market
+		std::string payload{ std::format(R"({{"assets_ids": ["{}"], "type": "market", "level": 2}})", target_asset_id_raw_) };
+
+		ws.text(true);
+		ws.write(net::buffer(payload));
+
+		std::cout << std::format("Sent subscription to wss://{}{}\n\n", host, path);
+
+		beast::flat_buffer fb;
+
+		while (running_) {
+			boost::system::error_code ec;
+			ws.read(fb, ec);
+
+			if (ec) {
+				throw std::runtime_error("CRITICAL: unexpected error when reading websocket, aborting!");
+			}
+
+			auto data = boost::beast::buffers_front(fb.data());
+			std::size_t msg_size_bytes{ data.size() };
+
+			if (msg_size_bytes > NETWORK_MAX_MSG_SIZE) {
+				std::cerr << std::format("CRITICAL: message exceeded max message size {}! Message is {} bytes, dropping!\n",
+					NETWORK_MAX_MSG_SIZE, msg_size_bytes);
+				fb.consume(fb.size());
+				continue;
+			}
+
+			market::MessageBuffer* buffer{ network_buffer_pool_.acquire() };
+			if (!buffer) {
+				std::cerr << "CRITICAL: Out of network buffers, dropping!\n";
+				fb.consume(fb.size());
+				continue;
+			}
+
+			std::memcpy(buffer->data_, data.data(), msg_size_bytes);
+			buffer->message_size_ = static_cast<uint32_t>(msg_size_bytes);
+
+			// simdjson expects a certain amount of padding bytes,
+			// so fill in the rest of the buffer with zeros
+			std::memset(buffer->data_ + msg_size_bytes, 0, simdjson::SIMDJSON_PADDING);
+
 			fb.consume(fb.size());
-			continue;
+
+			network_queue_.enqueue(buffer);
 		}
 
-		market::MessageBuffer* buffer{ network_buffer_pool_.acquire() };
-		if (!buffer) {
-			std::cerr << "CRITICAL: Out of network buffers, dropping!\n";
-			fb.consume(fb.size());
-			continue;
-		}
-
-		std::memcpy(buffer->data_, data.data(), msg_size_bytes);
-		buffer->message_size_ = static_cast<uint32_t>(msg_size_bytes);
-
-		// simdjson expects a certain amount of padding bytes,
-		// so fill in the rest of the buffer with zeros
-		std::memset(buffer->data_ + msg_size_bytes, 0, simdjson::SIMDJSON_PADDING);
-
-		fb.consume(fb.size());
-
-		network_queue_.enqueue(buffer);
+		std::cout << "Stop message received, websocket client stopping\n";
 	}
-
-	std::cout << "Stop message received, websocket client stopping\n";
+	catch (const std::exception& e) {
+		std::cerr << std::format("CRITICAL: Unexpected error in network client: {}\n", e.what());
+		throw;
+	}
 }

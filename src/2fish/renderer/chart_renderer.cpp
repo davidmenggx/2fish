@@ -130,17 +130,6 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 
 void renderer::ChartRenderer::updateHeatmap(const MarketSnapshot* snapshot, double current_time) {
 	if (snapshot) {
-		//std::cout << "Snapshot contains:\n";
-		//std::cout << "Bids: ";
-		//for (auto elem : snapshot->bids_) {
-		//	std::cout << elem << ' ';
-		//}
-		//std::cout << "\nAsks: ";
-		//for (auto elem : snapshot->asks_) {
-		//	std::cout << elem << ' ';
-		//}
-		//std::cout << "\n\n";
-
 		// TODO: do not hard code time interval
 		if (current_time - last_shift_time_ >= 0.1) {
 			for (size_t row = 0; row < kPriceLevels; ++row) {
@@ -171,9 +160,6 @@ void renderer::ChartRenderer::updateHeatmap(const MarketSnapshot* snapshot, doub
 
 			cell = std::pow(cell / max_volume_, 2.5); // TODO: slider for power curve exponent
 		}
-	}
-	else {
-		std::cout << "Snapshot was null!\n";
 	}
 }
 

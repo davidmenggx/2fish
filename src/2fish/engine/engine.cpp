@@ -13,14 +13,11 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <charconv>
 #include <chrono>
-#include <cstdint>
+#include <exception>
+#include <format>
 #include <iostream>
 #include <string>
-#include <string_view>
-#include <system_error>
-#include <thread>
 
 #include <intrin0.inl.h>
 
@@ -39,35 +36,41 @@ void market::Engine::start() {
 }
 
 void market::Engine::run() {
-	market::MarketAccumulation* accumulation{};
-	int messages_since_write{};
+	try {
+		market::MarketAccumulation* accumulation{};
+		int messages_since_write{};
 
-	while (running_) {
-		if (!engine_queue_.try_dequeue(accumulation)) {
-			if (messages_since_write > 0) {
+		while (running_) {
+			if (!engine_queue_.try_dequeue(accumulation)) {
+				if (messages_since_write > 0) {
+					publishSnapshot();
+					messages_since_write = 0;
+				}
+
+				_mm_pause(); // spin wait
+				continue;
+			}
+
+			applyUpdates(accumulation);
+
+			parser_buffer_pool_.release(accumulation);
+
+			++messages_since_write;
+
+			if (messages_since_write > 100) {
+				// if there is a big backlog of messages (high market activity),
+				// just force a write periodically (every 100 messages) so the GUI stays live
 				publishSnapshot();
 				messages_since_write = 0;
 			}
-
-			_mm_pause(); // spin wait
-			continue;
 		}
 
-		applyUpdates(accumulation);
-
-		parser_buffer_pool_.release(accumulation);
-
-		++messages_since_write;
-
-		if (messages_since_write > 100) {
-			// if there is a big backlog of messages (high market activity),
-			// just force a write periodically (every 100 messages) so the GUI stays live
-			publishSnapshot();
-			messages_since_write = 0;
-		}
+		std::cout << "Stop message received, engine stopping\n";
 	}
-
-	std::cout << "Stop message received, market engine stopping\n";
+	catch (const std::exception& e) {
+		std::cerr << std::format("CRITICAL: Unexpected error in engine: {}\n", e.what());
+		throw;
+	}
 }
 
 void market::Engine::publishSnapshot() {
