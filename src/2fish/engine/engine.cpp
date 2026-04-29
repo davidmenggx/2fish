@@ -1,6 +1,6 @@
 #include "2fish/engine/engine.h"
 #include "2fish/models/market_accumulation.h"
-#include "2fish/models/market_snapshot.h"
+#include "2fish/models/orderbook_snapshot.h"
 #include "2fish/models/trade.h"
 #include "2fish/models/types.h"
 #include "2fish/network/network_buffer_pool.h"
@@ -23,10 +23,10 @@
 
 market::Engine::Engine(moodycamel::ReaderWriterQueue<MarketAccumulation*>& engine_queue,
 	parser::ParserBufferPool& parser_buffer_pool,
-	TripleBuffer<MarketSnapshot>& market_snapshot_buffer,
+	TripleBuffer<OrderbookSnapshot>& orderbook_snapshot_buffer,
 	std::atomic<bool>& running, std::string target_asset_id_)
 	: engine_queue_{ engine_queue }, parser_buffer_pool_{ parser_buffer_pool }
-	, market_snapshot_buffer_{ market_snapshot_buffer }
+	, orderbook_snapshot_buffer_{ orderbook_snapshot_buffer }
 	, running_{ running }, target_asset_id_{ target_asset_id_ }
 {
 }
@@ -74,7 +74,7 @@ void market::Engine::run() {
 }
 
 void market::Engine::publishSnapshot() {
-	MarketSnapshot* buffer{ market_snapshot_buffer_.getWriterBuffer() };
+	OrderbookSnapshot* buffer{ orderbook_snapshot_buffer_.getWriterBuffer() };
 
 	std::array<double, 101> book_bids{ book_.getBids() };
 	std::copy(book_bids.begin(), book_bids.end(), buffer->bids_.begin());
@@ -82,17 +82,15 @@ void market::Engine::publishSnapshot() {
 	std::array<double, 101> book_asks{ book_.getAsks() };
 	std::copy(book_asks.begin(), book_asks.end(), buffer->asks_.begin());
 
-	auto now = std::chrono::system_clock::now();
-	auto duration = now.time_since_epoch();
-	buffer->last_updated_ = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-
-	buffer->last_message_ = last_message_;
+	buffer->timestamp_ = latest_timestamp_;
 
 	// save our work: switch out the triple buffer
-	market_snapshot_buffer_.publishWriterBuffer();
+	orderbook_snapshot_buffer_.publishWriterBuffer();
 }
 
 void market::Engine::applyUpdates(market::MarketAccumulation* accumulation) {
+	latest_timestamp_ = accumulation->timestamp_;
+
 	if (accumulation->asset_id_ != target_asset_id_) {
 		std::cerr << "Unknown asset id\n";
 		return;

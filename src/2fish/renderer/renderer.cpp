@@ -1,4 +1,4 @@
-#include "2fish/models/market_snapshot.h"
+#include "2fish/models/orderbook_snapshot.h"
 #include "2fish/models/trade.h"
 #include "2fish/renderer/chart_renderer.h"
 #include "2fish/renderer/renderer.h"
@@ -28,11 +28,9 @@
 #include <stdexcept>
 #include <string>
 
-renderer::Renderer::Renderer(TripleBuffer<MarketSnapshot>& market_snapshot_buffer,
-	moodycamel::ReaderWriterQueue<market::Trade>& trade_queue,
-	const std::string& title, int width, int height, std::atomic<bool>& running)
-	: market_snapshot_buffer_{ market_snapshot_buffer }
-	, running_{ running }, chart_renderer_{ trade_queue }
+renderer::Renderer::Renderer(MarketStore& market_store, const std::string& title, 
+	int width, int height, std::atomic<bool>& running)
+	: market_store_{ market_store }, running_{ running }
 {
 	if (!SDL_Init(SDL_INIT_VIDEO)) {
 		throw std::runtime_error(std::format("Could not initialize SDL: {}", SDL_GetError()));
@@ -291,9 +289,11 @@ void renderer::Renderer::run() {
 			ImGui_ImplSDL3_NewFrame();
 			ImGui::NewFrame();
 
-			// build the charts
-			const MarketSnapshot* snapshot{ market_snapshot_buffer_.getReaderBuffer() };
-			chart_renderer_.updateAndDraw(snapshot);
+			int64_t current_timestamp_ms{ market_store_.getLatestTimestamp() };
+			if (current_timestamp_ms > 0) {
+				market_store_.query(current_timestamp_ms, *current_view_);
+				chart_renderer_.draw(*current_view_);
+			}
 
 			ImGui::Render();
 			ImDrawData* draw_data = ImGui::GetDrawData();

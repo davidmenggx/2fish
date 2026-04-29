@@ -1,6 +1,7 @@
 #pragma once
 
-#include "2fish/models/market_snapshot.h"
+#include "2fish/models/orderbook_snapshot.h"
+#include "2fish/market_store/market_store.h"
 #include "2fish/models/trade.h"
 #include "2fish/renderer/chart_renderer.h"
 #include "2fish/utils/triple_buffer.h"
@@ -20,13 +21,13 @@
 #include <vector>
 #include <atomic>
 #include <string>
+#include <memory>
 
 namespace renderer {
 	class Renderer {
 	public:
-		Renderer(TripleBuffer<MarketSnapshot>& market_snapshot_buffer,
-            moodycamel::ReaderWriterQueue<market::Trade>& trade_queue,
-            const std::string& title, int width, int height, std::atomic<bool>& running);
+		Renderer(MarketStore& market_store, const std::string& title, int width, 
+            int height, std::atomic<bool>& running);
 
 		~Renderer();
 
@@ -37,6 +38,9 @@ namespace renderer {
         void createFramebuffers();
         void createCommandAndSyncObjects();
         void recreateSwapchain();
+
+        MarketStore& market_store_;
+        std::unique_ptr<QueryResult> current_view_{ std::make_unique<QueryResult>() };
 
         SDL_Window* main_window_{ nullptr };
 
@@ -60,8 +64,6 @@ namespace renderer {
         VkSemaphore image_available_semaphore_{ VK_NULL_HANDLE };
         VkSemaphore render_finished_semaphore_{ VK_NULL_HANDLE };
         VkFence in_flight_fence_{ VK_NULL_HANDLE };
-
-		TripleBuffer<MarketSnapshot>& market_snapshot_buffer_;
 
 		ChartRenderer chart_renderer_;
 

@@ -63,8 +63,6 @@ void parser::Parser::run() {
 	}
 }
 
-// BIG TODO: MORE ROBUST ERROR RETURN CODES
-
 parser::ParserReturnCode parser::Parser::parseDataToBuffer(market::MessageBuffer * message, market::MarketAccumulation * buffer) {
 	// simdjson expects a certain amount of padding for safe simd parsing
 	simdjson::padded_string_view psv(
@@ -113,6 +111,8 @@ parser::ParserReturnCode parser::Parser::parseDataToBuffer(market::MessageBuffer
 	buffer->snapshot_bids_.fill(0);
 	buffer->price_change_deltas_.clear();
 
+	// TODO: find a better way to reset these fields to avoid trades from polluting each other
+	// in theory this should never happen
 	trade_accumulator_ = market::Trade{};
 	bool is_trade_event{ false };
 
@@ -151,7 +151,8 @@ parser::ParserReturnCode parser::Parser::parseDataToBuffer(market::MessageBuffer
 			auto [ptr, ec] = std::from_chars(raw_timestamp.data(), raw_timestamp.data() + raw_timestamp.size(), timestamp);
 
 			if (ec == std::errc()) {
-				buffer->last_message_ = timestamp;
+				buffer->timestamp_ = timestamp;
+				trade_accumulator_.timestamp_ = timestamp;
 			}
 		}
 		// event_type = book

@@ -3,10 +3,9 @@
 #include <array>
 #include <cstdint>
 
-struct MarketSnapshot {
+struct OrderbookSnapshot {
 	std::array<double, 101> bids_{};
 	std::array<double, 101> asks_{};
 
-	uint64_t last_message_{}; // milliseconds
-	uint64_t last_updated_{}; // milliseconds
+	int64_t timestamp_{};
 };

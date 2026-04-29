@@ -19,7 +19,7 @@ namespace market {
 	struct MarketAccumulation {
 		std::string asset_id_{};
 		EventType type_{};
-		uint64_t last_message_{};
+		int64_t timestamp_{};
 
 		// fields for event_type book
 		std::array<double, 101> snapshot_bids_{};

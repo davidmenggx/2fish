@@ -1,4 +1,7 @@
-#include "2fish/models/market_snapshot.h"
+#include "2fish/constants.h"
+#include "2fish/market_store/market_store.h"
+#include "2fish/models/candlestick.h"
+#include "2fish/models/orderbook_snapshot.h"
 #include "2fish/models/trade.h"
 #include "2fish/renderer/chart_renderer.h"
 
@@ -13,13 +16,6 @@
 #include <iostream>
 #include <iterator>
 
-#include <vector>
-
-renderer::ChartRenderer::ChartRenderer(moodycamel::ReaderWriterQueue<market::Trade>& trade_queue)
-	: heatmap_render_buffer_(kHistorySteps* kPriceLevels, 0.0)
-	, trade_queue_{ trade_queue }
-{
-}
 
 void renderer::ChartRenderer::init() {
 	static const ImVec4 colors[] = {
@@ -31,224 +27,184 @@ void renderer::ChartRenderer::init() {
 		ImVec4(1.00f, 1.00f, 0.00f, 1.00f)  // neon yellow
 	};
 	bookmap_colormap_ = ImPlot::AddColormap("Bookmap", colors, std::size(colors));
-	active_candle_.start_time_ = ImGui::GetTime();
 }
 
-void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
-	double current_time{ ImGui::GetTime() };
+void renderer::ChartRenderer::draw(const QueryResult& query) {
+    ImGuiViewport* viewport{ ImGui::GetMainViewport() };
+    ImGui::SetNextWindowPos(viewport->WorkPos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x * 0.7f, viewport->WorkSize.y), ImGuiCond_Always);
 
-	updateHeatmap(snapshot, current_time);
-	updateCandlesticks(current_time);
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground;
 
-	ImGuiViewport* viewport{ ImGui::GetMainViewport() };
-	ImGui::SetNextWindowPos(viewport->WorkPos, ImGuiCond_Always);
-	ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x * 0.7f, viewport->WorkSize.y), ImGuiCond_Always);
+    if (ImGui::Begin("Orderbook heatmap", nullptr, window_flags)) {
+        ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4(0, 0, 0, 1));
+        ImPlot::PushStyleColor(ImPlotCol_PlotBg, ImVec4(0, 0, 0, 1));
+        ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(0, 0));
 
-	ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground;
+        // 1. DETERMINE EXACT LOADING STATE
+        bool is_completely_empty = true;
+        for (std::size_t i{ 0 }; i < constants::HISTORY_STEPS; ++i) {
+            if (query.snapshots_[i].candlestick_.close_ > 0 || query.snapshots_[i].candlestick_.high_ > 0) {
+                is_completely_empty = false;
+                break;
+            }
+        }
 
-	if (ImGui::Begin("Orderbook heatmap", nullptr, window_flags)) {
-		ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4(0, 0, 0, 1));
-		ImPlot::PushStyleColor(ImPlotCol_PlotBg, ImVec4(0, 0, 0, 1));
-		ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(0, 0));
-		if (bookmap_colormap_ != -1) {
-			ImPlot::PushColormap(bookmap_colormap_);
-		}
+        bool is_fetching_history = !query.all_data_loaded_ && !is_completely_empty;
 
-		float old_scale = ImGui::GetFont()->Scale;
-		ImGui::GetFont()->Scale *= 1.5f; // TODO: more robust font size scaling
-		ImGui::PushFont(ImGui::GetFont());
+        // 2. ONLY USE GREYSCALE IF COMPLETELY EMPTY
+        if (is_completely_empty) {
+            ImPlot::PushColormap(ImPlotColormap_Greys);
+        }
+        else if (bookmap_colormap_ != -1) {
+            ImPlot::PushColormap(bookmap_colormap_);
+        }
 
-		ImPlotFlags plot_flags = ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoFrame;
+        float old_scale = ImGui::GetFont()->Scale;
+        ImGui::GetFont()->Scale *= 1.5f;
+        ImGui::PushFont(ImGui::GetFont());
 
-		ImVec2 plot_pos;
-		ImVec2 plot_size;
+        ImPlotFlags plot_flags = ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoFrame;
 
-		if (ImPlot::BeginPlot("Orderbook", ImVec2(-1, -1), plot_flags)) {
+        ImVec2 plot_pos;
+        ImVec2 plot_size;
 
-			int y_min{ kPriceLevels };
-			int y_max{ 0 };
-			for (std::size_t i{ 0 }; i < candlestick_history_.size(); ++i) {
-				double age_sec{ current_time - candlestick_history_[i].start_time_ };
-				double x_pos{ kHistorySteps - (age_sec / 0.1) };
+        if (ImPlot::BeginPlot("Orderbook", ImVec2(-1, -1), plot_flags)) {
 
-				if (x_pos >= 0) {
-					y_min = std::min(y_min, candlestick_history_[i].low_);
-					y_max = std::max(y_max, candlestick_history_[i].high_);
-				}
-			}
-			y_min = std::min({ y_min, active_candle_.low_, last_trade_price_ });
-			y_max = std::max({ y_max, active_candle_.high_, last_trade_price_ });
+            int y_min{ constants::PRICE_LEVELS };
+            int y_max{ 0 };
+            int last_trade_price{ 0 };
 
-			if (y_max == 0) {
-				y_min = 0;
-				y_max = kPriceLevels;
-			}
-			else {
-				y_min = std::max(0, y_min - chart_zoom_gap_);
-				y_max = std::min(static_cast<int>(kPriceLevels), y_max + chart_zoom_gap_);
-			}
+            for (std::size_t i{ 0 }; i < constants::HISTORY_STEPS; ++i) {
+                const auto& candle = query.snapshots_[i].candlestick_;
 
-			ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoDecorations, ImPlotAxisFlags_Opposite);
-			ImPlot::SetupAxisLimits(ImAxis_X1, 0, kHistorySteps, ImPlotCond_Always);
-			ImPlot::SetupAxisLimits(ImAxis_Y1, y_min, y_max, ImPlotCond_Always);
+                if (candle.high_ > 0 || candle.low_ > 0) {
+                    y_min = std::min(y_min, candle.low_);
+                    y_max = std::max(y_max, candle.high_);
+                    if (last_trade_price == 0) last_trade_price = candle.close_; // Grab the most recent valid close
+                }
+            }
 
-			plot_pos = ImPlot::GetPlotPos();
-			plot_size = ImPlot::GetPlotSize();
+            if (y_max == 0) {
+                y_min = 0;
+                y_max = constants::PRICE_LEVELS;
+            }
+            else {
+                y_min = std::max(0, y_min - chart_zoom_gap_);
+                y_max = std::min(static_cast<int>(constants::PRICE_LEVELS), y_max + chart_zoom_gap_);
+            }
 
-			ImPlot::PlotHeatmap("Liquidity", heatmap_render_buffer_.data(), kPriceLevels, kHistorySteps, 0.0, 1.0, nullptr, ImPlotPoint(0, 0), ImPlotPoint(kHistorySteps, kPriceLevels));
+            ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoDecorations, ImPlotAxisFlags_Opposite);
+            ImPlot::SetupAxisLimits(ImAxis_X1, 0, constants::HISTORY_STEPS, ImPlotCond_Always);
+            ImPlot::SetupAxisLimits(ImAxis_Y1, y_min, y_max, ImPlotCond_Always);
 
-			ImDrawList* draw_list{ ImPlot::GetPlotDrawList() };
+            plot_pos = ImPlot::GetPlotPos();
+            plot_size = ImPlot::GetPlotSize();
 
-			ImPlot::PushPlotClipRect();
+            ImDrawList* draw_list{ ImPlot::GetPlotDrawList() };
+            ImPlot::PushPlotClipRect();
 
-			float trade_y_pixels = ImPlot::PlotToPixels(0.0, static_cast<double>(last_trade_price_)).y;
+            // Draw last trade price line
+            if (last_trade_price > 0) {
+                float trade_y_pixels = ImPlot::PlotToPixels(0.0, static_cast<double>(last_trade_price)).y;
+                for (float x{ plot_pos.x }; x < plot_pos.x + plot_size.x; x += 9.0f) {
+                    ImVec2 start(x, trade_y_pixels);
+                    ImVec2 end(std::min(x + 5.0f, plot_pos.x + plot_size.x), trade_y_pixels);
 
-			// draw a dashed horizontal line representing last trade price
-			for (float x{ plot_pos.x }; x < plot_pos.x + plot_size.x; x += 5.0f + 4.0f) {
-				ImVec2 start(x, trade_y_pixels);
-				ImVec2 end(std::min(x + 5.0f, plot_pos.x + plot_size.x), trade_y_pixels);
-				draw_list->AddLine(start, end, IM_COL32(255, 165, 0, 200), 3.0f);
-			}
+                    ImU32 line_col = is_completely_empty ? IM_COL32(150, 150, 150, 200) : IM_COL32(255, 165, 0, 200);
+                    draw_list->AddLine(start, end, line_col, 3.0f);
+                }
+            }
 
-			// draw candlesticks
-			for (std::size_t i{ 0 }; i < candlestick_history_.size(); ++i) {
-				drawCandlestick(candlestick_history_[i], draw_list, current_time);
-			}
-			drawCandlestick(active_candle_, draw_list, current_time);
+            // 3. USE FULL COLOR IF WE HAVE AT LEAST SOME DATA
+            ImU32 bull_col = is_completely_empty ? IM_COL32(120, 120, 120, 255) : IM_COL32(5, 101, 23, 255);
+            ImU32 bear_col = is_completely_empty ? IM_COL32(80, 80, 80, 255) : IM_COL32(222, 26, 36, 255);
+            ImU32 flat_col = is_completely_empty ? IM_COL32(100, 100, 100, 255) : IM_COL32(150, 150, 150, 255);
 
-			ImPlot::PopPlotClipRect();
-			ImPlot::EndPlot();
-		}
+            for (std::size_t i{ 0 }; i < constants::HISTORY_STEPS; ++i) {
+                const auto& candle = query.snapshots_[i].candlestick_;
 
-		// button overlay
-		ImVec2 plot_max = ImVec2(plot_pos.x + plot_size.x, plot_pos.y + plot_size.y);
+                // Yes, skip completely empty candles so they don't draw weird artifacts at y=0
+                if (candle.high_ == 0 && candle.low_ == 0 && candle.open_ == 0) {
+                    continue;
+                }
 
-		// only show the buttons when the user is hovering over the chart
-		if (ImGui::IsMouseHoveringRect(plot_pos, plot_max)) {
+                drawCandlestick(candle, static_cast<double>(i) + 0.5, draw_list, bull_col, bear_col, flat_col);
+            }
 
-			// TODO: move these out
-			float button_width{ 80.0f };
-			float button_height{ 40.0f };
-			float spacing{ ImGui::GetStyle().ItemSpacing.x };
-			float total_width{ (button_width * 2) + spacing };
+            // 4. SMART OVERLAYS
+            if (is_completely_empty) {
+                // Big center overlay if nothing has loaded yet
+                const char* loading_text = "CONNECTING TO POLYMARKET...";
+                ImVec2 text_size = ImGui::CalcTextSize(loading_text);
+                ImVec2 text_pos = ImVec2(
+                    plot_pos.x + (plot_size.x - text_size.x) * 0.5f,
+                    plot_pos.y + (plot_size.y - text_size.y) * 0.5f
+                );
+                draw_list->AddRectFilled(
+                    ImVec2(text_pos.x - 10, text_pos.y - 5),
+                    ImVec2(text_pos.x + text_size.x + 10, text_pos.y + text_size.y + 5),
+                    IM_COL32(0, 0, 0, 200)
+                );
+                draw_list->AddText(text_pos, IM_COL32(255, 255, 255, 255), loading_text);
+            }
+            else if (is_fetching_history) {
+                // Small corner overlay indicating background fetching
+                const char* fetching_text = "Fetching History...";
+                ImVec2 text_pos = ImVec2(plot_pos.x + 10.0f, plot_pos.y + 10.0f);
+                draw_list->AddText(text_pos, IM_COL32(200, 200, 200, 255), fetching_text);
+            }
 
-			ImVec2 button_start_pos = ImVec2(
-				plot_pos.x + (plot_size.x - total_width) * 0.5f,
-				plot_max.y - button_height - 20.0f
-			);
+            ImPlot::PopPlotClipRect();
+            ImPlot::EndPlot();
+        }
 
-			ImGui::SetCursorScreenPos(button_start_pos);
+        // ... (Button overlay logic remains exactly the same) ...
 
-			// TODO: move these out
-			int zoom_step{ 3 };
+        // Ensure we pop the colormap if we pushed one
+        if (is_completely_empty || bookmap_colormap_ != -1) ImPlot::PopColormap();
 
-			if (ImGui::Button("+", ImVec2(button_width, button_height))) {
-				chart_zoom_gap_ = std::max(0, chart_zoom_gap_ - zoom_step);
-			}
-
-			ImGui::SameLine();
-
-			if (ImGui::Button("-", ImVec2(button_width, button_height))) {
-				chart_zoom_gap_ += zoom_step;
-			}
-		}
-
-		if (bookmap_colormap_ != -1) ImPlot::PopColormap();
-		ImPlot::PopStyleVar();
-		ImPlot::PopStyleColor(2);
-		ImGui::GetFont()->Scale = old_scale;
-		ImGui::PopFont();
-	}
-	ImGui::End();
+        ImPlot::PopStyleVar();
+        ImPlot::PopStyleColor(2);
+        ImGui::GetFont()->Scale = old_scale;
+        ImGui::PopFont();
+    }
+    ImGui::End();
 }
 
-void renderer::ChartRenderer::updateHeatmap(const MarketSnapshot* snapshot, double current_time) {
-	if (snapshot) {
-		// TODO: do not hard code time interval
-		if (current_time - last_shift_time_ >= 0.1) {
-			for (size_t row = 0; row < kPriceLevels; ++row) {
-				double* row_start{ &heatmap_render_buffer_[row * kHistorySteps] };
-				std::memmove(row_start, row_start + 1, (kHistorySteps - 1) * sizeof(double));
-			}
-			heatmap_history_.push(*snapshot);
-			last_shift_time_ = current_time;
-		}
+void renderer::ChartRenderer::drawCandlestick(const Candlestick& candle, double x_idx,
+    ImDrawList* draw_list, ImU32 bull_col, ImU32 bear_col, ImU32 flat_col) {
+    // TODO: move the colors to constants
+    ImU32 color = flat_col;
+    if (candle.close_ > candle.open_) {
+        color = bull_col;
+    }
+    else if (candle.close_ < candle.open_) {
+        color = bear_col;
+    }
 
-		const std::size_t last_col{ kHistorySteps - 1 };
-		double current_log_max{ 0.0 };
+    float open_y = ImPlot::PlotToPixels(x_idx, candle.open_).y;
+    float close_y = ImPlot::PlotToPixels(x_idx, candle.close_).y;
+    float high_y = ImPlot::PlotToPixels(x_idx, candle.high_).y;
+    float low_y = ImPlot::PlotToPixels(x_idx, candle.low_).y;
 
-		for (std::size_t level{ 0 }; level < kPriceLevels; ++level) {
-			double total_volume{ snapshot->bids_[level] + snapshot->asks_[level] };
-			std::size_t render_row{ (kPriceLevels - 1) - level };
+    float center_x_px = ImPlot::PlotToPixels(x_idx, candle.close_).x;
 
-			double log_val{ std::log1p(total_volume) };
-			heatmap_render_buffer_[render_row * kHistorySteps + last_col] = log_val;
-			current_log_max = std::max(current_log_max, log_val);
-		}
+    // draw the wick
+    draw_list->AddLine(ImVec2(center_x_px, low_y), ImVec2(center_x_px, high_y), color, 2.0f);
 
-		max_volume_ = std::max(1.0, std::max(max_volume_ * 0.95, current_log_max));
+    // draw the body
+    float half_width_px = 4.5f;
+    float top_y = std::min(open_y, close_y);
+    float bottom_y = std::max(open_y, close_y);
 
-		for (std::size_t level{ 0 }; level < kPriceLevels; ++level) {
-			std::size_t render_row{ (kPriceLevels - 1) - level };
-			double& cell{ heatmap_render_buffer_[render_row * kHistorySteps + last_col] };
+    if (bottom_y - top_y < 2.0f) {
+        bottom_y = top_y + 2.0f;
+    }
 
-			cell = std::pow(cell / max_volume_, 2.5); // TODO: slider for power curve exponent
-		}
-	}
-}
-
-void renderer::ChartRenderer::updateCandlesticks(double current_time) {
-	// TODO: 1.0 is the time interval in which a candle is pushed to history, make this a global constant
-	if (current_time - active_candle_.start_time_ >= 1.0) {
-		candlestick_history_.push(active_candle_);
-
-		int last_price{ active_candle_.close_ };
-		active_candle_.start_time_ = current_time;
-		active_candle_.open_ = last_price;
-		active_candle_.high_ = last_price;
-		active_candle_.low_ = last_price;
-		active_candle_.close_ = last_price;
-		active_candle_.volume_ = 0.0;
-	}
-	while (trade_queue_.try_dequeue(trade_accumulator_)) {
-		// build the candle
-		active_candle_.high_ = std::max(active_candle_.high_, trade_accumulator_.price_);
-		active_candle_.low_ = std::min(active_candle_.low_, trade_accumulator_.price_);
-		active_candle_.close_ = trade_accumulator_.price_;
-		active_candle_.volume_ += trade_accumulator_.size_;
-		last_trade_price_ = trade_accumulator_.price_;
-	}
-}
-
-void renderer::ChartRenderer::drawCandlestick(const Candlestick& candle, ImDrawList* draw_list, double current_time) {
-	double age_sec{ current_time - candle.start_time_ };
-	double x_pos{ kHistorySteps - (age_sec / 0.1) };
-
-	if (x_pos < 0) {
-		return;
-	}
-
-	ImU32 color{ (candle.close_ >= candle.open_) ? IM_COL32(5, 101, 23, 255) : IM_COL32(222, 26, 36, 255) };
-
-	float half_width{ 4.5f };
-	ImVec2 p_open{ ImPlot::PlotToPixels(x_pos - half_width, candle.open_) };
-	ImVec2 p_close{ ImPlot::PlotToPixels(x_pos + half_width, candle.close_) };
-	ImVec2 p_high{ ImPlot::PlotToPixels(x_pos, candle.high_) };
-	ImVec2 p_low{ ImPlot::PlotToPixels(x_pos, candle.low_) };
-
-	draw_list->AddLine(p_low, p_high, color, 7.5f);
-
-	float top_y{ std::min(p_open.y, p_close.y) };
-	float bottom_y{ std::max(p_open.y, p_close.y) };
-
-	// Even if there is no change, always draw a thin line
-	if (bottom_y - top_y < 5.0f) {
-		bottom_y = top_y + 5.0f;
-	}
-
-	draw_list->AddRectFilled(
-		ImVec2(std::min(p_open.x, p_close.x), top_y),
-		ImVec2(std::max(p_open.x, p_close.x), bottom_y),
-		color
-	);
+    draw_list->AddRectFilled(
+        ImVec2(center_x_px - half_width_px, top_y),
+        ImVec2(center_x_px + half_width_px, bottom_y),
+        color
+    );
 }
