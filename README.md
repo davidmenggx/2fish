@@ -1,3 +1,3 @@
 # 🎏 2fish
 
-(WIP) Low-latency Polymarket liquidity terminal
+(WIP) Low-latency Polymarket trading terminal
