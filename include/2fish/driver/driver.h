@@ -1,8 +1,9 @@
 #pragma once
 
+#include "2fish/aggregator/aggregator.h"
 #include "2fish/engine/engine.h"
 #include "2fish/models/market_accumulation.h"
-#include "2fish/models/market_snapshot.h"
+#include "2fish/models/orderbook_snapshot.h"
 #include "2fish/models/trade.h"
 #include "2fish/network/network_buffer_pool.h"
 #include "2fish/network/websocket_client.h"
@@ -34,12 +35,13 @@ private:
 
 	moodycamel::ReaderWriterQueue<market::Trade> trade_queue_{};
 
-	TripleBuffer<MarketSnapshot> market_snapshot_buffer_;
+	TripleBuffer<OrderbookSnapshot> orderbook_snapshot_buffer_;
 
 	std::atomic<bool> running_{ false };
 
 	market::WebsocketClient client_;
 	parser::Parser parser_;
 	market::Engine engine_;
+	Aggregator aggregator_;
 	renderer::Renderer renderer_;
 };

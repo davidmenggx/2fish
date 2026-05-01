@@ -1,23 +1,21 @@
-#include "2fish/models/market_snapshot.h"
-#include "2fish/models/trade.h"
+#include "2fish/aggregator/aggregator.h"
+#include "2fish/constants.h"
+#include "2fish/models/candlestick.h"
+#include "2fish/models/orderbook_snapshot.h"
 #include "2fish/renderer/chart_renderer.h"
-
-#include "moodycamel/readerwriterqueue.h"
 
 #include <imgui.h>
 #include <implot.h>
 
 #include <algorithm>
-#include <cmath>
-#include <cstring>
+#include <chrono>
+#include <cstdint>
 #include <iostream>
 #include <iterator>
-
 #include <vector>
 
-renderer::ChartRenderer::ChartRenderer(moodycamel::ReaderWriterQueue<market::Trade>& trade_queue)
-	: heatmap_render_buffer_(kHistorySteps* kPriceLevels, 0.0)
-	, trade_queue_{ trade_queue }
+renderer::ChartRenderer::ChartRenderer(Aggregator& aggregator)
+	: aggregator_{ aggregator }
 {
 }
 
@@ -30,17 +28,74 @@ void renderer::ChartRenderer::init() {
 		ImVec4(0.80f, 0.95f, 0.05f, 1.00f),
 		ImVec4(1.00f, 1.00f, 0.00f, 1.00f)  // neon yellow
 	};
-	bookmap_colormap_ = ImPlot::AddColormap("Bookmap", colors, std::size(colors));
-	active_candle_.start_time_ = ImGui::GetTime();
+	orderbook_heatmap_lookup_ = ImPlot::AddColormap("Orderbook Heatmap", colors, std::size(colors));
 }
 
-void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
-	double current_time{ ImGui::GetTime() };
+// TODO: you might need to be a global util
+static int64_t getLocalTimeMs() {
+	auto now = std::chrono::system_clock::now();
+	return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+}
 
-	updateHeatmap(snapshot, current_time);
-	updateCandlesticks(current_time);
+void renderer::ChartRenderer::draw() {
+	int64_t local_now_ms{ getLocalTimeMs() };
+	int64_t receipt_ts{ aggregator_.getLocalReceiptTime() };
+	int64_t exchange_ts{ aggregator_.getLatestExchangeTimestamp() };
 
-	ImGuiViewport* viewport{ ImGui::GetMainViewport() };
+	int64_t elapsed_silence_ms{ std::max<int64_t>(0, local_now_ms - receipt_ts) };
+	double visual_now_ms{ static_cast<double>(exchange_ts + elapsed_silence_ms) };
+
+	double window_duration_ms{ static_cast<double>(constants::HISTORY_STEPS * constants::CANDLESTICK_INTERVAL) };
+	double x_min{ visual_now_ms - window_duration_ms };
+	double x_max{ visual_now_ms };
+
+	aggregator_.extractCandles(active_candles_);
+
+	aggregator_.extractOrderbook(active_snapshots_);
+	heatmap_cols_ = active_snapshots_.size();
+
+	if (heatmap_cols_ > 0) {
+		heatmap_render_buffer_.resize(constants::PRICE_LEVELS * heatmap_cols_);
+
+		for (std::size_t col{ 0 }; col < heatmap_cols_; ++col) {
+			const OrderbookSnapshot& snapshot{ active_snapshots_[col] };
+
+			for (std::size_t row{ 0 }; row < constants::PRICE_LEVELS; ++row) {
+				float liquidity_volume{ snapshot.getLiquidity(row) };
+
+				// TODO: perhaps make this dynamic, or use a better log function to get
+				// less sharp colors
+				float max_expected_volume{ 1000.0f };
+				float normalized_liquidity{ std::min(1.0f, liquidity_volume / max_expected_volume) };
+
+				std::size_t index{ (row * heatmap_cols_) + col };
+				heatmap_render_buffer_[index] = normalized_liquidity;
+			}
+		}
+	}
+
+	int y_min{ constants::PRICE_LEVELS };
+	int y_max{ 0 };
+	double latest_close_price{ 0.0 };
+
+	for (const Candlestick& candle : active_candles_) {
+		if (static_cast<double>(candle.start_timestamp_) >= x_min) {
+			y_min = std::min(y_min, static_cast<int>(candle.low_));
+			y_max = std::max(y_max, static_cast<int>(candle.high_));
+			latest_close_price = candle.close_;
+		}
+	}
+
+	if (y_max == 0) {
+		y_min = 0;
+		y_max = constants::PRICE_LEVELS;
+	}
+	else {
+		y_min = std::max(0, y_min - chart_zoom_gap_);
+		y_max = std::min(static_cast<int>(constants::PRICE_LEVELS), y_max + chart_zoom_gap_);
+	}
+
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(viewport->WorkPos, ImGuiCond_Always);
 	ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x * 0.7f, viewport->WorkSize.y), ImGuiCond_Always);
 
@@ -50,110 +105,104 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 		ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4(0, 0, 0, 1));
 		ImPlot::PushStyleColor(ImPlotCol_PlotBg, ImVec4(0, 0, 0, 1));
 		ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(0, 0));
-		if (bookmap_colormap_ != -1) {
-			ImPlot::PushColormap(bookmap_colormap_);
+
+		if (orderbook_heatmap_lookup_ != -1) {
+			ImPlot::PushColormap(orderbook_heatmap_lookup_);
 		}
 
-		float old_scale = ImGui::GetFont()->Scale;
-		ImGui::GetFont()->Scale *= 1.5f; // TODO: more robust font size scaling
+		float old_scale{ ImGui::GetFont()->Scale };
+		ImGui::GetFont()->Scale *= 1.5f;
 		ImGui::PushFont(ImGui::GetFont());
 
 		ImPlotFlags plot_flags = ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoFrame;
 
-		ImVec2 plot_pos;
-		ImVec2 plot_size;
+		ImVec2 cached_plot_pos;
+		ImVec2 cached_plot_size;
+		bool plot_was_drawn{ false };
 
 		if (ImPlot::BeginPlot("Orderbook", ImVec2(-1, -1), plot_flags)) {
 
-			int y_min{ kPriceLevels };
-			int y_max{ 0 };
-			for (std::size_t i{ 0 }; i < candlestick_history_.size(); ++i) {
-				double age_sec{ current_time - candlestick_history_[i].start_time_ };
-				double x_pos{ kHistorySteps - (age_sec / 0.1) };
-
-				if (x_pos >= 0) {
-					y_min = std::min(y_min, candlestick_history_[i].low_);
-					y_max = std::max(y_max, candlestick_history_[i].high_);
-				}
-			}
-			y_min = std::min({ y_min, active_candle_.low_, last_trade_price_ });
-			y_max = std::max({ y_max, active_candle_.high_, last_trade_price_ });
-
-			if (y_max == 0) {
-				y_min = 0;
-				y_max = kPriceLevels;
-			}
-			else {
-				y_min = std::max(0, y_min - chart_zoom_gap_);
-				y_max = std::min(static_cast<int>(kPriceLevels), y_max + chart_zoom_gap_);
-			}
-
 			ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoDecorations, ImPlotAxisFlags_Opposite);
-			ImPlot::SetupAxisLimits(ImAxis_X1, 0, kHistorySteps, ImPlotCond_Always);
+			ImPlot::SetupAxisLimits(ImAxis_X1, x_min, x_max, ImPlotCond_Always);
 			ImPlot::SetupAxisLimits(ImAxis_Y1, y_min, y_max, ImPlotCond_Always);
 
-			plot_pos = ImPlot::GetPlotPos();
-			plot_size = ImPlot::GetPlotSize();
+			if (heatmap_cols_ > 0) {
+				double first_snap_ms{ static_cast<double>(active_snapshots_.front().timestamp_) };
+				double last_snap_ms{ static_cast<double>(active_snapshots_.back().timestamp_) + constants::ORDERBOOK_INTERVAL };
 
-			ImPlot::PlotHeatmap("Liquidity", heatmap_render_buffer_.data(), kPriceLevels, kHistorySteps, 0.0, 1.0, nullptr, ImPlotPoint(0, 0), ImPlotPoint(kHistorySteps, kPriceLevels));
+				ImPlotPoint bounds_min(first_snap_ms, 0);
+				ImPlotPoint bounds_max(last_snap_ms, constants::PRICE_LEVELS);
 
-			ImDrawList* draw_list{ ImPlot::GetPlotDrawList() };
+				ImPlot::PlotHeatmap("Liquidity", heatmap_render_buffer_.data(),
+					constants::PRICE_LEVELS, heatmap_cols_,
+					0.0, 1.0, nullptr, bounds_min, bounds_max);
+			}
 
+			ImDrawList* draw_list = ImPlot::GetPlotDrawList();
 			ImPlot::PushPlotClipRect();
 
-			float trade_y_pixels = ImPlot::PlotToPixels(0.0, static_cast<double>(last_trade_price_)).y;
-
-			// draw a dashed horizontal line representing last trade price
-			for (float x{ plot_pos.x }; x < plot_pos.x + plot_size.x; x += 5.0f + 4.0f) {
-				ImVec2 start(x, trade_y_pixels);
-				ImVec2 end(std::min(x + 5.0f, plot_pos.x + plot_size.x), trade_y_pixels);
-				draw_list->AddLine(start, end, IM_COL32(255, 165, 0, 200), 3.0f);
+			for (const Candlestick& candle : active_candles_) {
+				if (static_cast<double>(candle.start_timestamp_ + constants::CANDLESTICK_INTERVAL) > x_min) {
+					drawCandlestick(candle, draw_list);
+				}
 			}
 
-			// draw candlesticks
-			for (std::size_t i{ 0 }; i < candlestick_history_.size(); ++i) {
-				drawCandlestick(candlestick_history_[i], draw_list, current_time);
+			if (latest_close_price > 0.0) {
+				float trade_y_pixels{ ImPlot::PlotToPixels(0.0, latest_close_price).y };
+				ImVec2 current_plot_pos = ImPlot::GetPlotPos();
+				ImVec2 current_plot_size = ImPlot::GetPlotSize();
+
+				// draw the last trade line
+				for (float x{ current_plot_pos.x }; x < current_plot_pos.x + current_plot_size.x; x += 9.0f) {
+					ImVec2 start(x, trade_y_pixels);
+					ImVec2 end(std::min(x + 5.0f, current_plot_pos.x + current_plot_size.x), trade_y_pixels);
+					draw_list->AddLine(start, end, IM_COL32(255, 165, 0, 200), 2.0f);
+				}
 			}
-			drawCandlestick(active_candle_, draw_list, current_time);
+
+			cached_plot_pos = ImPlot::GetPlotPos();
+			cached_plot_size = ImPlot::GetPlotSize();
+			plot_was_drawn = true;
 
 			ImPlot::PopPlotClipRect();
 			ImPlot::EndPlot();
 		}
 
-		// button overlay
-		ImVec2 plot_max = ImVec2(plot_pos.x + plot_size.x, plot_pos.y + plot_size.y);
+		if (plot_was_drawn) {
+			ImVec2 plot_max = ImVec2(cached_plot_pos.x + cached_plot_size.x, cached_plot_pos.y + cached_plot_size.y);
 
-		// only show the buttons when the user is hovering over the chart
-		if (ImGui::IsMouseHoveringRect(plot_pos, plot_max)) {
+			if (ImGui::IsMouseHoveringRect(cached_plot_pos, plot_max)) {
+				// TODO: move these constants out
+				float button_width{ 80.0f };
+				float button_height{ 40.0f };
+				float spacing{ ImGui::GetStyle().ItemSpacing.x };
+				float total_width{ (button_width * 2) + spacing };
 
-			// TODO: move these out
-			float button_width{ 80.0f };
-			float button_height{ 40.0f };
-			float spacing{ ImGui::GetStyle().ItemSpacing.x };
-			float total_width{ (button_width * 2) + spacing };
+				ImVec2 button_start_pos = ImVec2(
+					cached_plot_pos.x + (cached_plot_size.x - total_width) * 0.5f,
+					plot_max.y - button_height - 20.0f
+				);
 
-			ImVec2 button_start_pos = ImVec2(
-				plot_pos.x + (plot_size.x - total_width) * 0.5f,
-				plot_max.y - button_height - 20.0f
-			);
+				ImGui::SetCursorScreenPos(button_start_pos);
 
-			ImGui::SetCursorScreenPos(button_start_pos);
+				// TODO: move this constant out
+				int zoom_step{ 3 };
 
-			// TODO: move these out
-			int zoom_step{ 3 };
+				if (ImGui::Button("+", ImVec2(button_width, button_height))) {
+					chart_zoom_gap_ = std::max(0, chart_zoom_gap_ - zoom_step);
+				}
 
-			if (ImGui::Button("+", ImVec2(button_width, button_height))) {
-				chart_zoom_gap_ = std::max(0, chart_zoom_gap_ - zoom_step);
-			}
+				ImGui::SameLine();
 
-			ImGui::SameLine();
-
-			if (ImGui::Button("-", ImVec2(button_width, button_height))) {
-				chart_zoom_gap_ += zoom_step;
+				if (ImGui::Button("-", ImVec2(button_width, button_height))) {
+					chart_zoom_gap_ += zoom_step;
+				}
 			}
 		}
 
-		if (bookmap_colormap_ != -1) ImPlot::PopColormap();
+		if (orderbook_heatmap_lookup_ != -1) {
+			ImPlot::PopColormap();
+		}
 		ImPlot::PopStyleVar();
 		ImPlot::PopStyleColor(2);
 		ImGui::GetFont()->Scale = old_scale;
@@ -162,86 +211,32 @@ void renderer::ChartRenderer::updateAndDraw(const MarketSnapshot* snapshot) {
 	ImGui::End();
 }
 
-void renderer::ChartRenderer::updateHeatmap(const MarketSnapshot* snapshot, double current_time) {
-	if (snapshot) {
-		// TODO: do not hard code time interval
-		if (current_time - last_shift_time_ >= 0.1) {
-			for (size_t row = 0; row < kPriceLevels; ++row) {
-				double* row_start{ &heatmap_render_buffer_[row * kHistorySteps] };
-				std::memmove(row_start, row_start + 1, (kHistorySteps - 1) * sizeof(double));
-			}
-			heatmap_history_.push(*snapshot);
-			last_shift_time_ = current_time;
-		}
+void renderer::ChartRenderer::drawCandlestick(const Candlestick& candle, ImDrawList* draw_list) {
+	double center_x_ms{ static_cast<double>(candle.start_timestamp_) + (constants::CANDLESTICK_INTERVAL / 2.0) };
 
-		const std::size_t last_col{ kHistorySteps - 1 };
-		double current_log_max{ 0.0 };
+	double half_width_ms{ (constants::CANDLESTICK_INTERVAL * 0.49) };
 
-		for (std::size_t level{ 0 }; level < kPriceLevels; ++level) {
-			double total_volume{ snapshot->bids_[level] + snapshot->asks_[level] };
-			std::size_t render_row{ (kPriceLevels - 1) - level };
+	double left_x_ms = center_x_ms - half_width_ms;
+	double right_x_ms = center_x_ms + half_width_ms;
 
-			double log_val{ std::log1p(total_volume) };
-			heatmap_render_buffer_[render_row * kHistorySteps + last_col] = log_val;
-			current_log_max = std::max(current_log_max, log_val);
-		}
+	ImVec2 p_open = ImPlot::PlotToPixels(left_x_ms, candle.open_);
+	ImVec2 p_close = ImPlot::PlotToPixels(right_x_ms, candle.close_);
+	ImVec2 p_high = ImPlot::PlotToPixels(center_x_ms, candle.high_);
+	ImVec2 p_low = ImPlot::PlotToPixels(center_x_ms, candle.low_);
 
-		max_volume_ = std::max(1.0, std::max(max_volume_ * 0.95, current_log_max));
+	// green for up, red for down
+	ImU32 color = (candle.close_ >= candle.open_)
+		? IM_COL32(5, 101, 23, 255)
+		: IM_COL32(222, 26, 36, 255);
 
-		for (std::size_t level{ 0 }; level < kPriceLevels; ++level) {
-			std::size_t render_row{ (kPriceLevels - 1) - level };
-			double& cell{ heatmap_render_buffer_[render_row * kHistorySteps + last_col] };
+	// draw the wick
+	draw_list->AddLine(p_low, p_high, color, 10.0f);
 
-			cell = std::pow(cell / max_volume_, 2.5); // TODO: slider for power curve exponent
-		}
-	}
-}
-
-void renderer::ChartRenderer::updateCandlesticks(double current_time) {
-	// TODO: 1.0 is the time interval in which a candle is pushed to history, make this a global constant
-	if (current_time - active_candle_.start_time_ >= 1.0) {
-		candlestick_history_.push(active_candle_);
-
-		int last_price{ active_candle_.close_ };
-		active_candle_.start_time_ = current_time;
-		active_candle_.open_ = last_price;
-		active_candle_.high_ = last_price;
-		active_candle_.low_ = last_price;
-		active_candle_.close_ = last_price;
-		active_candle_.volume_ = 0.0;
-	}
-	while (trade_queue_.try_dequeue(trade_accumulator_)) {
-		// build the candle
-		active_candle_.high_ = std::max(active_candle_.high_, trade_accumulator_.price_);
-		active_candle_.low_ = std::min(active_candle_.low_, trade_accumulator_.price_);
-		active_candle_.close_ = trade_accumulator_.price_;
-		active_candle_.volume_ += trade_accumulator_.size_;
-		last_trade_price_ = trade_accumulator_.price_;
-	}
-}
-
-void renderer::ChartRenderer::drawCandlestick(const Candlestick& candle, ImDrawList* draw_list, double current_time) {
-	double age_sec{ current_time - candle.start_time_ };
-	double x_pos{ kHistorySteps - (age_sec / 0.1) };
-
-	if (x_pos < 0) {
-		return;
-	}
-
-	ImU32 color{ (candle.close_ >= candle.open_) ? IM_COL32(5, 101, 23, 255) : IM_COL32(222, 26, 36, 255) };
-
-	float half_width{ 4.5f };
-	ImVec2 p_open{ ImPlot::PlotToPixels(x_pos - half_width, candle.open_) };
-	ImVec2 p_close{ ImPlot::PlotToPixels(x_pos + half_width, candle.close_) };
-	ImVec2 p_high{ ImPlot::PlotToPixels(x_pos, candle.high_) };
-	ImVec2 p_low{ ImPlot::PlotToPixels(x_pos, candle.low_) };
-
-	draw_list->AddLine(p_low, p_high, color, 7.5f);
-
+	// draw the body
 	float top_y{ std::min(p_open.y, p_close.y) };
 	float bottom_y{ std::max(p_open.y, p_close.y) };
 
-	// Even if there is no change, always draw a thin line
+	// make sure the candle has minimum height so it shows up on flat markets
 	if (bottom_y - top_y < 5.0f) {
 		bottom_y = top_y + 5.0f;
 	}

@@ -35,9 +35,14 @@ void parser::Parser::start() {
 void parser::Parser::run() {
 	try {
 		market::MessageBuffer* message{};
-		while (running_) {
+		while (running_.load(std::memory_order_relaxed)) {
 			if (!network_queue_.try_dequeue(message)) {
-				_mm_pause(); // spin wait
+				// spin wait
+				#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+					_mm_pause();
+				#elif defined(__aarch64__) || defined(_M_ARM64)
+					__asm__ volatile("yield" ::: "memory");
+				#endif
 				continue;
 			}
 
@@ -147,11 +152,12 @@ parser::ParserReturnCode parser::Parser::parseDataToBuffer(market::MessageBuffer
 			if (val.get_string().get(raw_timestamp)) {
 				continue;
 			}
-			uint64_t timestamp{};
+			int64_t timestamp{};
 			auto [ptr, ec] = std::from_chars(raw_timestamp.data(), raw_timestamp.data() + raw_timestamp.size(), timestamp);
 
 			if (ec == std::errc()) {
-				buffer->last_message_ = timestamp;
+				buffer->timestamp_ = timestamp;
+				trade_accumulator_.timestamp_ = timestamp;
 			}
 		}
 		// event_type = book

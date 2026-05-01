@@ -80,7 +80,7 @@ void market::WebsocketClient::run() {
 
 		beast::flat_buffer fb;
 
-		while (running_) {
+		while (running_.load(std::memory_order_relaxed)) {
 			boost::system::error_code ec;
 			ws.read(fb, ec);
 

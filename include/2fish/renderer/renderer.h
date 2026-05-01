@@ -1,6 +1,7 @@
 #pragma once
 
-#include "2fish/models/market_snapshot.h"
+#include "2fish/aggregator/aggregator.h"
+#include "2fish/models/orderbook_snapshot.h"
 #include "2fish/models/trade.h"
 #include "2fish/renderer/chart_renderer.h"
 #include "2fish/utils/triple_buffer.h"
@@ -24,9 +25,8 @@
 namespace renderer {
 	class Renderer {
 	public:
-		Renderer(TripleBuffer<MarketSnapshot>& market_snapshot_buffer,
-            moodycamel::ReaderWriterQueue<market::Trade>& trade_queue,
-            const std::string& title, int width, int height, std::atomic<bool>& running);
+		Renderer(Aggregator& aggregator, const std::string& title, 
+            int width, int height, std::atomic<bool>& running);
 
 		~Renderer();
 
@@ -61,7 +61,7 @@ namespace renderer {
         VkSemaphore render_finished_semaphore_{ VK_NULL_HANDLE };
         VkFence in_flight_fence_{ VK_NULL_HANDLE };
 
-		TripleBuffer<MarketSnapshot>& market_snapshot_buffer_;
+        Aggregator& aggregator_;
 
 		ChartRenderer chart_renderer_;
 
