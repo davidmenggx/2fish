@@ -9,8 +9,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
-#include <iostream>
 #include <iterator>
 #include <vector>
 
@@ -57,19 +57,35 @@ void renderer::ChartRenderer::draw() {
 	if (heatmap_cols_ > 0) {
 		heatmap_render_buffer_.resize(constants::PRICE_LEVELS * heatmap_cols_);
 
+		double max_visible_volume{ 0.0 };
+		for (std::size_t col{ 0 }; col < heatmap_cols_; ++col) {
+			const OrderbookSnapshot& snapshot{ active_snapshots_[col] };
+			for (std::size_t row{ 0 }; row < constants::PRICE_LEVELS; ++row) {
+				double vol{ snapshot.getLiquidity(row) };
+				if (vol > max_visible_volume) {
+					max_visible_volume = vol;
+				}
+			}
+		}
+
+		if (max_visible_volume < 1.0) {
+			max_visible_volume = 1.0;
+		}
+
+		double log_max_volume{ std::log1p(max_visible_volume) };
+
 		for (std::size_t col{ 0 }; col < heatmap_cols_; ++col) {
 			const OrderbookSnapshot& snapshot{ active_snapshots_[col] };
 
 			for (std::size_t row{ 0 }; row < constants::PRICE_LEVELS; ++row) {
-				float liquidity_volume{ snapshot.getLiquidity(row) };
+				double liquidity_volume{ snapshot.getLiquidity(row) };
 
-				// TODO: perhaps make this dynamic, or use a better log function to get
-				// less sharp colors
-				float max_expected_volume{ 1000.0f };
-				float normalized_liquidity{ std::min(1.0f, liquidity_volume / max_expected_volume) };
+				double log_volume{ std::log1p(liquidity_volume) };
+
+				double normalized_liquidity{ log_volume / log_max_volume };
 
 				std::size_t index{ (row * heatmap_cols_) + col };
-				heatmap_render_buffer_[index] = normalized_liquidity;
+				heatmap_render_buffer_[index] = std::clamp(normalized_liquidity, 0.0, 1.0);
 			}
 		}
 	}
@@ -122,9 +138,27 @@ void renderer::ChartRenderer::draw() {
 
 		if (ImPlot::BeginPlot("Orderbook", ImVec2(-1, -1), plot_flags)) {
 
-			ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoDecorations, ImPlotAxisFlags_Opposite);
-			ImPlot::SetupAxisLimits(ImAxis_X1, x_min, x_max, ImPlotCond_Always);
+			ImPlot::SetupAxes(nullptr, nullptr, 0, ImPlotAxisFlags_Opposite);
+
+			// if the user is up to date on the latest action, auto scroll them.
+			// otherwise, let them browse freely
+			if (previous_x_max_ == 0.0 || auto_scroll_) {
+				ImPlot::SetupAxisLimits(ImAxis_X1, x_min, x_max, ImPlotCond_Always);
+			}
+			else {
+				ImPlot::SetupAxisLimits(ImAxis_X1, x_min, x_max, ImPlotCond_Once);
+			}
+
 			ImPlot::SetupAxisLimits(ImAxis_Y1, y_min, y_max, ImPlotCond_Always);
+
+			ImPlot::SetupAxisFormat(ImAxis_X1, [](double value, char* buff, int size, void* user_data) {
+				std::time_t t{ static_cast<std::time_t>(value / 1000.0) };
+				std::tm* tm_info{ std::gmtime(&t) };
+				if (tm_info) {
+					return (int)std::strftime(buff, size, "%H:%M:%S", tm_info);
+				}
+				return 0;
+				}, nullptr);
 
 			if (heatmap_cols_ > 0) {
 				double first_snap_ms{ static_cast<double>(active_snapshots_.front().timestamp_) };
@@ -164,6 +198,15 @@ void renderer::ChartRenderer::draw() {
 			cached_plot_size = ImPlot::GetPlotSize();
 			plot_was_drawn = true;
 
+			previous_x_max_ = ImPlot::GetPlotLimits(ImAxis_X1).X.Max;
+
+			if (ImPlot::IsPlotHovered() && (ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::GetIO().MouseWheel != 0.0f)) {
+				auto_scroll_ = false;
+			}
+			else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && previous_x_max_ >= x_max - (window_duration_ms * 0.05)) {
+				auto_scroll_ = true;
+			}
+
 			ImPlot::PopPlotClipRect();
 			ImPlot::EndPlot();
 		}
@@ -188,14 +231,24 @@ void renderer::ChartRenderer::draw() {
 				// TODO: move this constant out
 				int zoom_step{ 3 };
 
+				// zoom in
 				if (ImGui::Button("+", ImVec2(button_width, button_height))) {
-					chart_zoom_gap_ = std::max(0, chart_zoom_gap_ - zoom_step);
+					chart_zoom_gap_ = std::max(zoom_step, chart_zoom_gap_ - zoom_step);
 				}
 
 				ImGui::SameLine();
 
+				// zoom out
 				if (ImGui::Button("-", ImVec2(button_width, button_height))) {
 					chart_zoom_gap_ += zoom_step;
+				}
+
+				ImGui::SameLine();
+
+				// back to live feed
+				if (ImGui::Button("Live", ImVec2(button_width, button_height))) {
+					previous_x_max_ = 0.0;
+					auto_scroll_ = true;
 				}
 			}
 		}
@@ -214,7 +267,7 @@ void renderer::ChartRenderer::draw() {
 void renderer::ChartRenderer::drawCandlestick(const Candlestick& candle, ImDrawList* draw_list) {
 	double center_x_ms{ static_cast<double>(candle.start_timestamp_) + (constants::CANDLESTICK_INTERVAL / 2.0) };
 
-	double half_width_ms{ (constants::CANDLESTICK_INTERVAL * 0.49) };
+	double half_width_ms{ (constants::CANDLESTICK_INTERVAL * 0.45) };
 
 	double left_x_ms = center_x_ms - half_width_ms;
 	double right_x_ms = center_x_ms + half_width_ms;

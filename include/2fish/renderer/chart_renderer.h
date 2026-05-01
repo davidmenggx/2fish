@@ -40,6 +40,10 @@ namespace renderer {
 
 		ImPlotColormap orderbook_heatmap_lookup_{ -1 };
 
+		double previous_x_max_{ 0.0 };
+		bool auto_scroll_{ true };
+		double cached_max_volume_{ 1.0 };
+
 		int chart_zoom_gap_{ 10 };
 	};
 }

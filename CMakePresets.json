@@ -15,6 +15,8 @@
         "strategy": "external"
       },
       "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "20",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
         "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
         "CMAKE_TOOLCHAIN_FILE": "C:/Users/david/VCPKG/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-windows-static"

@@ -17,8 +17,6 @@
 #include <memory>
 #include <thread>
 
-#include <iostream>
-
 // TODO: these std make uniques are way too long
 Aggregator::Aggregator(moodycamel::ReaderWriterQueue<market::Trade>& trade_queue,
 	TripleBuffer<OrderbookSnapshot>& orderbook_snapshot_buffer,
@@ -86,7 +84,7 @@ void Aggregator::run() {
 						orderbook_snapshot_live_->push(*latest_orderbook_snapshot);
 					}
 				}
-				else {
+				else if (ob_bucket_start == current_ob_bucket_start) {
 					orderbook_snapshot_live_->update_back(*latest_orderbook_snapshot);
 				}
 
@@ -145,19 +143,13 @@ void Aggregator::run() {
 				latest_candlestick.volume_ = latest_trade.size_;
 				candlestick_live_->push(latest_candlestick);
 			}
-			else {
+			else if (candle_bucket_start == current_candle_bucket_start) {
 				latest_candlestick.high_ = std::max(latest_candlestick.high_, latest_trade.price_);
 				latest_candlestick.low_ = std::min(latest_candlestick.low_, latest_trade.price_);
 				latest_candlestick.close_ = latest_trade.price_;
 				latest_candlestick.volume_ += latest_trade.size_;
 				candlestick_live_->update_back(latest_candlestick);
 			}
-		}
-
-		if (processed_work) {
-			std::cout << "Processed some work\n";
-			std::cout << "Candlestick live is of size: " << candlestick_live_->size() << '\n';
-			std::cout << "Orderbook live is of size: " << orderbook_snapshot_live_->size() << "\n\n";
 		}
 
 		if (!processed_work) {
