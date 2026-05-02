@@ -15,4 +15,7 @@ namespace constants {
 	static constexpr std::size_t ORDERBOOK_INTERVAL{ CANDLESTICK_INTERVAL / ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK };
 
 	static constexpr std::size_t WINDOW_DURATION{ HISTORY_STEPS * CANDLESTICK_INTERVAL }; // ms
+
+	static constexpr std::size_t HISTORICAL_CANDLESTICK_GRANULARITY{ 1 }; // sec
+	static constexpr std::size_t HISTORICAL_ORDERBOOK_GRANULARITY{ 10 }; // sec
 }

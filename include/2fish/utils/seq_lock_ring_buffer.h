@@ -12,9 +12,9 @@
 #include <iostream>
 
 template <typename T, std::size_t Capacity>
-class RingBuffer {
+class SeqLockRingBuffer {
     static_assert(std::is_trivially_copyable_v<T>, "Type must be trivially copyable");
-    static_assert(std::has_single_bit(Capacity), "Size must be a power of 2");
+    static_assert(std::has_single_bit(Capacity), "Capacity must be a power of 2");
 
 public:
     void push(const T& item) {
@@ -54,7 +54,12 @@ public:
             seq0 = seq_.load(std::memory_order_acquire);
 
             if (seq0 & 1) {
-                continue;
+                // spin wait
+                #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+                    _mm_pause();
+                #elif defined(__aarch64__) || defined(_M_ARM64)
+                    __asm__ volatile("yield" ::: "memory");
+                #endif
             }
 
             std::size_t current_head = head_;
@@ -82,7 +87,12 @@ public:
             seq0 = seq_.load(std::memory_order_acquire);
 
             if (seq0 & 1) {
-                continue;
+                // spin wait
+                #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+                    _mm_pause();
+                #elif defined(__aarch64__) || defined(_M_ARM64)
+                    __asm__ volatile("yield" ::: "memory");
+                #endif
             }
 
             std::size_t current_head = head_;
@@ -133,7 +143,12 @@ public:
         do {
             seq0 = seq_.load(std::memory_order_acquire);
             if (seq0 & 1) {
-                continue;
+                // spin wait
+                #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+                    _mm_pause();
+                #elif defined(__aarch64__) || defined(_M_ARM64)
+                    __asm__ volatile("yield" ::: "memory");
+                #endif
             }
 
             current_head = head_;
@@ -146,6 +161,7 @@ public:
     }
 
 private:
+    // TODO: align?
     static constexpr std::size_t mask_{ Capacity - 1 };
 
     std::atomic<std::size_t> seq_{ 0 };

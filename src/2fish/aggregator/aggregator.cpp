@@ -3,8 +3,8 @@
 #include "2fish/models/candlestick.h"
 #include "2fish/models/orderbook_snapshot.h"
 #include "2fish/models/trade.h"
-#include "2fish/utils/lru_cache.h"
-#include "2fish/utils/ring_buffer.h"
+#include "2fish/utils/seq_lock_ring_buffer.h"
+#include "2fish/utils/timeseries_cache.h"
 #include "2fish/utils/triple_buffer.h"
 
 #include <moodycamel/readerwriterqueue.h>
@@ -26,10 +26,12 @@ Aggregator::Aggregator(moodycamel::ReaderWriterQueue<market::Trade>& trade_queue
 	std::atomic<bool>& running)
 	: trade_queue_{ trade_queue }, orderbook_snapshot_buffer_{ orderbook_snapshot_buffer }
 	, running_{ running }
-	, orderbook_snapshot_live_{ std::make_unique<RingBuffer<OrderbookSnapshot, constants::HISTORY_STEPS * 2 * constants::ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK>>() }
-	, candlestick_live_{ std::make_unique<RingBuffer<Candlestick, constants::HISTORY_STEPS * 2>>() }
-	, orderbook_snapshot_history_{ std::make_unique<LRUCache<int64_t, OrderbookSnapshot, constants::HISTORY_STEPS * 8>>() }
-	, candlestick_history_{ std::make_unique<LRUCache<int64_t, Candlestick, constants::HISTORY_STEPS * 8>>() }
+	, orderbook_snapshot_live_{ std::make_unique<SeqLockRingBuffer<OrderbookSnapshot, constants::HISTORY_STEPS * 2 * constants::ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK>>() }
+	, candlestick_live_{ std::make_unique<SeqLockRingBuffer<Candlestick, constants::HISTORY_STEPS * 2>>() }
+	, orderbook_snapshot_history_{ std::make_unique<TimeseriesCache<OrderbookSnapshot, constants::HISTORY_STEPS * 4 * constants::ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK,
+		constants::HISTORICAL_ORDERBOOK_GRANULARITY>>() }
+	, candlestick_history_{ std::make_unique<TimeseriesCache<Candlestick, constants::HISTORY_STEPS * 4,
+		constants::HISTORICAL_CANDLESTICK_GRANULARITY>>() }
 {
 	fetch_orderbook_snapshot_buffer_.reserve(constants::HISTORY_STEPS * 2 * constants::ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK);
 	fetch_candlestick_buffer_.reserve(constants::HISTORY_STEPS * 2);

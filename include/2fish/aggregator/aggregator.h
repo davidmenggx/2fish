@@ -4,8 +4,8 @@
 #include "2fish/models/candlestick.h"
 #include "2fish/models/orderbook_snapshot.h"
 #include "2fish/models/trade.h"
-#include "2fish/utils/lru_cache.h"
-#include "2fish/utils/ring_buffer.h"
+#include "2fish/utils/seq_lock_ring_buffer.h"
+#include "2fish/utils/timeseries_cache.h"
 #include "2fish/utils/triple_buffer.h"
 
 #include <moodycamel/readerwriterqueue.h>
@@ -41,15 +41,14 @@ private:
 	// external data feeds. The data is split into two sections: a live
 	// ring buffer feed for the past HISTORY_STEPS intervals, and an level 2
 	// LRU cache if the user decides to query old results
-	std::unique_ptr<RingBuffer<OrderbookSnapshot, constants::HISTORY_STEPS * 2 
+	std::unique_ptr<SeqLockRingBuffer<OrderbookSnapshot, constants::HISTORY_STEPS * 2
 		* constants::ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK>> orderbook_snapshot_live_;
-	std::unique_ptr<RingBuffer<Candlestick, constants::HISTORY_STEPS * 2>> candlestick_live_;
-	
-	// TODO: we need to think about how to efficiently batch these historical requests
-	// it is probably inefficient to query for individual timestamps, so perhaps
-	// larger blocks should be loaded. I would like to do this in a lock free manner
-	std::unique_ptr<LRUCache<int64_t, OrderbookSnapshot, constants::HISTORY_STEPS * 8>> orderbook_snapshot_history_;
-	std::unique_ptr<LRUCache<int64_t, Candlestick, constants::HISTORY_STEPS * 8>> candlestick_history_;
+	std::unique_ptr<SeqLockRingBuffer<Candlestick, constants::HISTORY_STEPS * 2>> candlestick_live_;
+
+	std::unique_ptr<TimeseriesCache<OrderbookSnapshot, constants::HISTORY_STEPS * 4 * constants::ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK,
+		constants::HISTORICAL_ORDERBOOK_GRANULARITY>> orderbook_snapshot_history_;
+	std::unique_ptr<TimeseriesCache<Candlestick, constants::HISTORY_STEPS * 4,
+		constants::HISTORICAL_CANDLESTICK_GRANULARITY>> candlestick_history_;
 	
 	std::atomic<int64_t> latest_exchange_timestamp_{};
 	std::atomic<int64_t> local_receipt_time_{};
