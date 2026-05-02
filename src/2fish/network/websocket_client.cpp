@@ -84,8 +84,16 @@ void market::WebsocketClient::run() {
 			boost::system::error_code ec;
 			ws.read(fb, ec);
 
+			if (ec == boost::beast::websocket::error::closed) {
+				std::cout << "Peer gracefully closed the connection.\n";
+				running_.store(false);
+				return;
+			}
+
 			if (ec) {
 				throw std::runtime_error("CRITICAL: unexpected error when reading websocket, aborting");
+				// TODO: instead of throwing, this should try a re-connect
+				// in general, this ec is non-recoverable in boost.beast
 			}
 
 			auto data = boost::beast::buffers_front(fb.data());

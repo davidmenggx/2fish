@@ -13,4 +13,6 @@ namespace constants {
 	// needs to be a power of 2
 	static constexpr std::size_t ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK{ 64 };
 	static constexpr std::size_t ORDERBOOK_INTERVAL{ CANDLESTICK_INTERVAL / ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK };
+
+	static constexpr std::size_t WINDOW_DURATION{ HISTORY_STEPS * CANDLESTICK_INTERVAL }; // ms
 }

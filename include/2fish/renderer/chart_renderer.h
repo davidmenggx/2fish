@@ -29,8 +29,8 @@ namespace renderer {
 		void drawCandlestick(const Candlestick& candle, ImDrawList* draw_list);
 
 		Aggregator& aggregator_;
-		std::vector<OrderbookSnapshot> active_snapshots_;
 		std::vector<Candlestick> active_candles_;
+		std::vector<OrderbookSnapshot> active_snapshots_;
 
 		uint16_t window_width_{};
 		uint16_t window_height_{};
@@ -41,6 +41,7 @@ namespace renderer {
 		ImPlotColormap orderbook_heatmap_lookup_{ -1 };
 
 		double previous_x_max_{ 0.0 };
+		double right_edge_ms_{};
 		bool auto_scroll_{ true };
 		double cached_max_volume_{ 1.0 };
 

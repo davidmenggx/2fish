@@ -16,6 +16,9 @@
 #include <intrin0.inl.h>
 #include <memory>
 #include <thread>
+#include <vector>
+
+#include <iostream>
 
 // TODO: these std make uniques are way too long
 Aggregator::Aggregator(moodycamel::ReaderWriterQueue<market::Trade>& trade_queue,
@@ -28,6 +31,8 @@ Aggregator::Aggregator(moodycamel::ReaderWriterQueue<market::Trade>& trade_queue
 	, orderbook_snapshot_history_{ std::make_unique<LRUCache<int64_t, OrderbookSnapshot, constants::HISTORY_STEPS * 8>>() }
 	, candlestick_history_{ std::make_unique<LRUCache<int64_t, Candlestick, constants::HISTORY_STEPS * 8>>() }
 {
+	fetch_orderbook_snapshot_buffer_.reserve(constants::HISTORY_STEPS * 2 * constants::ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK);
+	fetch_candlestick_buffer_.reserve(constants::HISTORY_STEPS * 2);
 }
 
 void Aggregator::start() {
@@ -161,4 +166,62 @@ void Aggregator::run() {
 			#endif
 		}
 	}
+}
+
+void Aggregator::extractCandles(std::vector<Candlestick>& candlesticks, double end_time) {
+	fetch_candlestick_buffer_.clear();
+	candlestick_live_->copy_to(fetch_candlestick_buffer_);
+
+	double start_time{ end_time - constants::WINDOW_DURATION };
+
+	auto it_start = std::lower_bound(
+		fetch_candlestick_buffer_.begin(),
+		fetch_candlestick_buffer_.end(),
+		start_time,
+		[](const Candlestick& candle, double time) { return candle.start_timestamp_ < time; }
+	);
+
+	auto it_end = std::upper_bound(
+		it_start,
+		fetch_candlestick_buffer_.end(),
+		end_time,
+		[](double time, const Candlestick& candle) { return time < candle.start_timestamp_; }
+	);
+	
+	// the interval we were looking for is recent, so we're good
+	if (it_start != it_end) {
+		candlesticks.assign(it_start, it_end);
+		return;
+	}
+
+	// FALLBACK TO QUERYING THE HISTORICAL CACHE
+}
+
+void Aggregator::extractOrderbook(std::vector<OrderbookSnapshot>& orderbook_snapshots, double end_time) {
+	fetch_orderbook_snapshot_buffer_.clear();
+	orderbook_snapshot_live_->copy_to(fetch_orderbook_snapshot_buffer_);
+
+	double start_time{ end_time - constants::WINDOW_DURATION };
+
+	auto it_start = std::lower_bound(
+		fetch_orderbook_snapshot_buffer_.begin(),
+		fetch_orderbook_snapshot_buffer_.end(),
+		start_time,
+		[](const OrderbookSnapshot& snapshot, double time) { return snapshot.timestamp_ < time; }
+	);
+
+	auto it_end = std::upper_bound(
+		it_start,
+		fetch_orderbook_snapshot_buffer_.end(),
+		end_time,
+		[](double time, const OrderbookSnapshot& snapshot) { return time < snapshot.timestamp_; }
+	);
+
+	// the interval we were looking for is recent, so we're good
+	if (it_start != it_end) {
+		orderbook_snapshots.assign(it_start, it_end);
+		return;
+	}
+
+	// FALLBACK TO QUERYING THE HISTORICAL CACHE
 }

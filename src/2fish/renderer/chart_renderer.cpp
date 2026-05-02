@@ -14,9 +14,14 @@
 #include <iterator>
 #include <vector>
 
+#include <iostream>
+
 renderer::ChartRenderer::ChartRenderer(Aggregator& aggregator)
 	: aggregator_{ aggregator }
 {
+	// TODO: could you guys be std::arrays?
+	active_candles_.reserve(constants::HISTORY_STEPS);
+	active_snapshots_.reserve(constants::HISTORY_STEPS * constants::ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK);
 }
 
 void renderer::ChartRenderer::init() {
@@ -45,13 +50,20 @@ void renderer::ChartRenderer::draw() {
 	int64_t elapsed_silence_ms{ std::max<int64_t>(0, local_now_ms - receipt_ts) };
 	double visual_now_ms{ static_cast<double>(exchange_ts + elapsed_silence_ms) };
 
-	double window_duration_ms{ static_cast<double>(constants::HISTORY_STEPS * constants::CANDLESTICK_INTERVAL) };
-	double x_min{ visual_now_ms - window_duration_ms };
+	double x_min{ visual_now_ms - constants::WINDOW_DURATION };
 	double x_max{ visual_now_ms };
 
-	aggregator_.extractCandles(active_candles_);
+	active_candles_.clear();
+	active_snapshots_.clear();
 
-	aggregator_.extractOrderbook(active_snapshots_);
+	// this block literally happens only once (at startup)
+	if (right_edge_ms_ == 0.0) {
+		right_edge_ms_ = visual_now_ms;
+	}
+
+	aggregator_.extractCandles(active_candles_, right_edge_ms_);
+
+	aggregator_.extractOrderbook(active_snapshots_, right_edge_ms_);
 	heatmap_cols_ = active_snapshots_.size();
 
 	if (heatmap_cols_ > 0) {
@@ -95,11 +107,9 @@ void renderer::ChartRenderer::draw() {
 	double latest_close_price{ 0.0 };
 
 	for (const Candlestick& candle : active_candles_) {
-		if (static_cast<double>(candle.start_timestamp_) >= x_min) {
-			y_min = std::min(y_min, static_cast<int>(candle.low_));
-			y_max = std::max(y_max, static_cast<int>(candle.high_));
-			latest_close_price = candle.close_;
-		}
+		y_min = std::min(y_min, static_cast<int>(candle.low_));
+		y_max = std::max(y_max, static_cast<int>(candle.high_));
+		latest_close_price = candle.close_;
 	}
 
 	if (y_max == 0) {
@@ -137,8 +147,9 @@ void renderer::ChartRenderer::draw() {
 		bool plot_was_drawn{ false };
 
 		if (ImPlot::BeginPlot("Orderbook", ImVec2(-1, -1), plot_flags)) {
+			ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoHighlight, ImPlotAxisFlags_Opposite | ImPlotAxisFlags_NoHighlight);
 
-			ImPlot::SetupAxes(nullptr, nullptr, 0, ImPlotAxisFlags_Opposite);
+			ImPlot::SetupAxisLimitsConstraints(ImAxis_X1, 0.0, x_max);
 
 			// if the user is up to date on the latest action, auto scroll them.
 			// otherwise, let them browse freely
@@ -172,13 +183,14 @@ void renderer::ChartRenderer::draw() {
 					0.0, 1.0, nullptr, bounds_min, bounds_max);
 			}
 
+			ImPlotRect limits = ImPlot::GetPlotLimits();
+			right_edge_ms_ = limits.X.Max;
+
 			ImDrawList* draw_list = ImPlot::GetPlotDrawList();
 			ImPlot::PushPlotClipRect();
 
 			for (const Candlestick& candle : active_candles_) {
-				if (static_cast<double>(candle.start_timestamp_ + constants::CANDLESTICK_INTERVAL) > x_min) {
-					drawCandlestick(candle, draw_list);
-				}
+				drawCandlestick(candle, draw_list);
 			}
 
 			if (latest_close_price > 0.0) {
@@ -203,7 +215,7 @@ void renderer::ChartRenderer::draw() {
 			if (ImPlot::IsPlotHovered() && (ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::GetIO().MouseWheel != 0.0f)) {
 				auto_scroll_ = false;
 			}
-			else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && previous_x_max_ >= x_max - (window_duration_ms * 0.05)) {
+			else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && previous_x_max_ >= x_max - (constants::WINDOW_DURATION * 0.05)) {
 				auto_scroll_ = true;
 			}
 

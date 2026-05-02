@@ -24,8 +24,8 @@ public:
 
 	void start();
 
-	void extractCandles(std::vector<Candlestick>& candlesticks) const { candlestick_live_->copy_to(candlesticks); }
-	void extractOrderbook(std::vector<OrderbookSnapshot>& orderbook_snapshots) const { orderbook_snapshot_live_->copy_to(orderbook_snapshots); }
+	void extractCandles(std::vector<Candlestick>& candlesticks, double end_time);
+	void extractOrderbook(std::vector<OrderbookSnapshot>& orderbook_snapshots, double end_time);
 
 	int64_t getLocalReceiptTime() const { return local_receipt_time_.load(std::memory_order_acquire); }
 	int64_t getLatestExchangeTimestamp() const { return latest_exchange_timestamp_.load(std::memory_order_acquire); }
@@ -53,6 +53,9 @@ private:
 	
 	std::atomic<int64_t> latest_exchange_timestamp_{};
 	std::atomic<int64_t> local_receipt_time_{};
+
+	std::vector<Candlestick> fetch_candlestick_buffer_{};
+	std::vector<OrderbookSnapshot> fetch_orderbook_snapshot_buffer_{};
 
 	std::atomic<bool>& running_;
 	std::jthread thread_;
