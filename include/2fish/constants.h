@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 
 namespace constants {
 	// the number of candlesticks (horizontal) that can be shown on screen at a time

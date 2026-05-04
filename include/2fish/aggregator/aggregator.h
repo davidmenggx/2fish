@@ -41,23 +41,23 @@ public:
 private:
 	void run();
 
-	void tryFetchHistoricalCandlestick(int64_t target_time, int64_t current_time_ms);
-	std::optional<Candlestick> constructHistoricalCandlestick(std::string_view raw_message);
+	void tryFetchHistoricalCandlestick(int64_t target_time, int64_t current_time_ms, int64_t end_time_s);
+	std::optional<Candlestick> constructHistoricalCandlestick(std::string_view raw_message, int64_t end_time_s);
 
 	void tryFetchHistoricalOrderbook(int64_t target_time, int64_t current_time);
 
-	// External data feeds for live streaming from the engine
+	// External data feeds for live streaming from the engine.
 	moodycamel::ReaderWriterQueue<market::Trade>& trade_queue_;
 	TripleBuffer<OrderbookSnapshot>& orderbook_snapshot_buffer_;
 
-	// Internal data feeds for historical fetch results
+	// Internal data feeds for historical fetch results.
 	moodycamel::ConcurrentQueue<Candlestick> historical_candlestick_queue_{};
 	moodycamel::ConcurrentQueue<OrderbookSnapshot> historical_orderbook_snapshot_queue_{};
 
 	// Intneral representations of the historical state, based on the
 	// external data feeds. The data is split into two sections: a live
 	// ring buffer feed for the past HISTORY_STEPS intervals, and an level 2
-	// LRU cache if the user decides to query old results
+	// timeseries cache if the user decides to query old results.
 	std::unique_ptr<SeqLockRingBuffer<OrderbookSnapshot, constants::HISTORY_STEPS * 2
 		* constants::ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK>> orderbook_snapshot_live_;
 	std::unique_ptr<SeqLockRingBuffer<Candlestick, constants::HISTORY_STEPS * 2>> candlestick_live_;
@@ -70,14 +70,14 @@ private:
 	std::atomic<int64_t> latest_exchange_timestamp_{};
 	std::atomic<int64_t> local_receipt_time_{};
 
-	// allocate these vectors just once and re-use them for future data fetches
+	// Allocate these vectors just once and re-use them for future data fetches.
 	std::vector<Candlestick> fetch_candlestick_buffer_{};
 	std::vector<OrderbookSnapshot> fetch_orderbook_snapshot_buffer_{};
 
 	boost::asio::thread_pool thread_pool_;
 
 	// Map the requested time (historical) to the time the request was made (live)
-	// to avoid spamming the API
+	// to avoid spamming the API.
 	std::unique_ptr<TimeseriesCache<int64_t, constants::HISTORY_STEPS * 64 * constants::ORDERBOOK_SNAPSHOTS_PER_CANDLESTICK,
 		constants::HISTORICAL_ORDERBOOK_GRANULARITY>> inflight_orderbook_requests_;
 	std::unique_ptr<TimeseriesCache<int64_t, constants::HISTORY_STEPS * 64,
