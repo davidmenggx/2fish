@@ -5,6 +5,7 @@
 #include "2fish/models/candlestick.h"
 #include "2fish/models/orderbook_snapshot.h"
 #include "2fish/models/trade.h"
+#include "2fish/renderer/renderer_slice.h"
 
 #include "moodycamel/readerwriterqueue.h"
 
@@ -29,8 +30,8 @@ namespace renderer {
 		void drawCandlestick(const Candlestick& candle, ImDrawList* draw_list);
 
 		Aggregator& aggregator_;
-		std::vector<Candlestick> active_candles_;
-		std::vector<OrderbookSnapshot> active_snapshots_;
+		std::vector<RendererSlice<Candlestick>> active_candles_;
+		std::vector<RendererSlice<OrderbookSnapshot>> active_snapshots_;
 
 		uint16_t window_width_{};
 		uint16_t window_height_{};

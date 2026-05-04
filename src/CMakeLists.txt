@@ -12,10 +12,12 @@ add_library(2fish_core STATIC ${SOURCES} ${HEADERS})
 target_include_directories(2fish_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
 
 target_link_libraries(2fish_core PUBLIC
+    Boost::boost
     Boost::system 
     Boost::filesystem
     Threads::Threads
     OpenSSL::SSL
+    OpenSSL::Crypto
     simdjson::simdjson
     SDL3::SDL3-static
     imgui::imgui
@@ -29,6 +31,8 @@ if(WIN32)
     target_link_libraries(2fish_core PUBLIC ws2_32 mswsock bcrypt)
     target_compile_definitions(2fish_core PUBLIC -D_WIN32_WINNT=0x0A00)
 endif()
+
+target_compile_definitions(2fish_core PUBLIC CPPHTTPLIB_OPENSSL_SUPPORT)
 
 add_executable(2fish 2fish/main.cpp)
 target_compile_features(2fish PUBLIC cxx_std_20)

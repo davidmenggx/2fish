@@ -16,19 +16,19 @@ private:
     // we use a seqlock for the slot itself, to avoid contention
     // with the other slots
     struct alignas(64) Slot {
-        std::atomic<uint32_t> seq_{ 0 };
-        std::atomic<uint64_t> timestamp_{ 0 };
+        std::atomic<std::size_t> seq_{ 0 };
+        std::atomic<int64_t> timestamp_{ 0 };
         T data_;
     };
 
     std::array<Slot, Capacity> buffer_{};
     
 public:
-    void put(uint64_t ts, const T& data) {
+    void put(int64_t ts, const T& data) {
         std::size_t idx{ (ts / Granularity) & (Capacity - 1) };
         Slot& slot{ buffer_[idx] };
 
-        uint32_t seq{ slot.seq_.load(std::memory_order_relaxed) };
+        std::size_t seq{ slot.seq_.load(std::memory_order_relaxed) };
 
         slot.seq_.store(seq + 1, std::memory_order_release);
 
@@ -38,12 +38,12 @@ public:
         slot.seq_.store(seq + 2, std::memory_order_release);
     }
 
-    std::optional<T> get(uint64_t target_ts) const {
+    std::optional<T> get(int64_t target_ts) const {
         std::size_t idx{ (target_ts / Granularity) & (Capacity - 1) };
         const Slot& slot{ buffer_[idx] };
 
-        uint32_t seq1{}, seq2{};
-        uint64_t read_ts{};
+        std::size_t seq1{}, seq2{};
+        int64_t read_ts{};
         T out_data{};
 
         do {

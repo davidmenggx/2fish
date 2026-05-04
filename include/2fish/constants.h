@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <cstddef>
 
 namespace constants {
@@ -16,6 +17,8 @@ namespace constants {
 
 	static constexpr std::size_t WINDOW_DURATION{ HISTORY_STEPS * CANDLESTICK_INTERVAL }; // ms
 
-	static constexpr std::size_t HISTORICAL_CANDLESTICK_GRANULARITY{ 1 }; // sec
+	static constexpr std::size_t HISTORICAL_CANDLESTICK_GRANULARITY{ 60 }; // sec
 	static constexpr std::size_t HISTORICAL_ORDERBOOK_GRANULARITY{ 10 }; // sec
+
+	static constexpr int64_t HTTP_REQUEST_COOLDOWN{ 5'000 }; // ms
 }

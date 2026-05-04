@@ -3,6 +3,7 @@
 #include "2fish/models/candlestick.h"
 #include "2fish/models/orderbook_snapshot.h"
 #include "2fish/renderer/chart_renderer.h"
+#include "2fish/renderer/renderer_slice.h"
 
 #include <imgui.h>
 #include <implot.h>
@@ -61,43 +62,55 @@ void renderer::ChartRenderer::draw() {
 		right_edge_ms_ = visual_now_ms;
 	}
 
-	aggregator_.extractCandles(active_candles_, right_edge_ms_);
+	aggregator_.extractCandles(active_candles_, right_edge_ms_, auto_scroll_, local_now_ms);
 
-	aggregator_.extractOrderbook(active_snapshots_, right_edge_ms_);
-	heatmap_cols_ = active_snapshots_.size();
+	aggregator_.extractOrderbook(active_snapshots_, right_edge_ms_, auto_scroll_, local_now_ms);
+	aggregator_.extractOrderbook(active_snapshots_, right_edge_ms_, auto_scroll_, local_now_ms);
 
-	if (heatmap_cols_ > 0) {
-		heatmap_render_buffer_.resize(constants::PRICE_LEVELS * heatmap_cols_);
+	int64_t grid_start_ms{ static_cast<int64_t>((x_min / constants::ORDERBOOK_INTERVAL) * constants::ORDERBOOK_INTERVAL) };
+	int64_t grid_end_ms{ static_cast<int64_t>((x_max / constants::ORDERBOOK_INTERVAL) * constants::ORDERBOOK_INTERVAL) };
 
-		double max_visible_volume{ 0.0 };
-		for (std::size_t col{ 0 }; col < heatmap_cols_; ++col) {
-			const OrderbookSnapshot& snapshot{ active_snapshots_[col] };
-			for (std::size_t row{ 0 }; row < constants::PRICE_LEVELS; ++row) {
-				double vol{ snapshot.getLiquidity(row) };
-				if (vol > max_visible_volume) {
-					max_visible_volume = vol;
+	std::size_t logical_cols{ std::max<std::size_t>(1, (grid_end_ms - grid_start_ms) / constants::ORDERBOOK_INTERVAL + 1) };
+
+	heatmap_cols_ = logical_cols;
+	heatmap_render_buffer_.assign(constants::PRICE_LEVELS * heatmap_cols_, 0.0);
+
+	if (!active_snapshots_.empty()) {
+		double max_visible_volume{ 1.0 };
+
+		for (const auto& slice : active_snapshots_) {
+			if (slice.is_loaded_) {
+				const OrderbookSnapshot& snapshot{ slice.data_ };
+				for (std::size_t row{ 0 }; row < constants::PRICE_LEVELS; ++row) {
+					double vol{ snapshot.getLiquidity(row) };
+					if (vol > max_visible_volume) {
+						max_visible_volume = vol;
+					}
 				}
 			}
 		}
 
-		if (max_visible_volume < 1.0) {
-			max_visible_volume = 1.0;
-		}
-
 		double log_max_volume{ std::log1p(max_visible_volume) };
 
-		for (std::size_t col{ 0 }; col < heatmap_cols_; ++col) {
-			const OrderbookSnapshot& snapshot{ active_snapshots_[col] };
+		for (const auto& slice : active_snapshots_) {
+			if (!slice.is_loaded_) {
+				continue;
+			}
 
-			for (std::size_t row{ 0 }; row < constants::PRICE_LEVELS; ++row) {
-				double liquidity_volume{ snapshot.getLiquidity(row) };
+			const OrderbookSnapshot& snapshot{ slice.data_ };
+			int64_t snap_ts{ snapshot.timestamp_ };
 
-				double log_volume{ std::log1p(liquidity_volume) };
+			if (snap_ts >= grid_start_ms && snap_ts <= grid_end_ms) {
+				std::size_t col{ (snap_ts - grid_start_ms) / constants::ORDERBOOK_INTERVAL };
 
-				double normalized_liquidity{ log_volume / log_max_volume };
+				for (std::size_t row{ 0 }; row < constants::PRICE_LEVELS; ++row) {
+					double liquidity_volume{ snapshot.getLiquidity(row) };
+					double log_volume{ std::log1p(liquidity_volume) };
+					double normalized_liquidity{ log_volume / log_max_volume };
 
-				std::size_t index{ (row * heatmap_cols_) + col };
-				heatmap_render_buffer_[index] = std::clamp(normalized_liquidity, 0.0, 1.0);
+					std::size_t index{ (row * heatmap_cols_) + col };
+					heatmap_render_buffer_[index] = std::clamp(normalized_liquidity, 0.0, 1.0);
+				}
 			}
 		}
 	}
@@ -106,10 +119,13 @@ void renderer::ChartRenderer::draw() {
 	int y_max{ 0 };
 	double latest_close_price{ 0.0 };
 
-	for (const Candlestick& candle : active_candles_) {
-		y_min = std::min(y_min, static_cast<int>(candle.low_));
-		y_max = std::max(y_max, static_cast<int>(candle.high_));
-		latest_close_price = candle.close_;
+	for (const RendererSlice<Candlestick>& slice : active_candles_) {
+		const Candlestick& candle{ slice.data_ };
+		if (slice.is_loaded_) {
+			y_min = std::min(y_min, static_cast<int>(candle.low_));
+			y_max = std::max(y_max, static_cast<int>(candle.high_));
+			latest_close_price = candle.close_;
+		}
 	}
 
 	if (y_max == 0) {
@@ -172,11 +188,9 @@ void renderer::ChartRenderer::draw() {
 				}, nullptr);
 
 			if (heatmap_cols_ > 0) {
-				double first_snap_ms{ static_cast<double>(active_snapshots_.front().timestamp_) };
-				double last_snap_ms{ static_cast<double>(active_snapshots_.back().timestamp_) + constants::ORDERBOOK_INTERVAL };
-
-				ImPlotPoint bounds_min(first_snap_ms, 0);
-				ImPlotPoint bounds_max(last_snap_ms, constants::PRICE_LEVELS);
+				// Use the absolute grid bounds rather than data timestamps
+				ImPlotPoint bounds_min(static_cast<double>(grid_start_ms), 0.0);
+				ImPlotPoint bounds_max(static_cast<double>(grid_end_ms + constants::ORDERBOOK_INTERVAL), constants::PRICE_LEVELS);
 
 				ImPlot::PlotHeatmap("Liquidity", heatmap_render_buffer_.data(),
 					constants::PRICE_LEVELS, heatmap_cols_,
@@ -189,8 +203,13 @@ void renderer::ChartRenderer::draw() {
 			ImDrawList* draw_list = ImPlot::GetPlotDrawList();
 			ImPlot::PushPlotClipRect();
 
-			for (const Candlestick& candle : active_candles_) {
-				drawCandlestick(candle, draw_list);
+			for (const RendererSlice<Candlestick>& slice : active_candles_) {
+				if (slice.is_loaded_) {
+					drawCandlestick(slice.data_, draw_list);
+				}
+				else {
+					// TODO: don't draw, but think about setting some other output to the user about fetching data
+				}
 			}
 
 			if (latest_close_price > 0.0) {
