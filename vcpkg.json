@@ -1,0 +1,9 @@
+{
+  "name": "3fish",
+  "dependencies": [
+    "boost-beast",
+    "gtest",
+    "openssl",
+    "simdjson"
+  ]
+}
