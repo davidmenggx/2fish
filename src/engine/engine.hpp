@@ -1,25 +1,24 @@
 #pragma once
 
 #include "common/websocket_data_types.hpp"
-#include "websocket_parser.hpp"
+#include "config.h"
 
 #include "moodycamel/readerwriterqueue.h"
 
 #include <atomic>
 #include <thread>
 
-class WebsocketClient {
+class Engine {
 public:
-  WebsocketClient(
-      moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue,
-      std::atomic<bool> &running);
+  Engine(moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue,
+         Config config, std::atomic<bool> &running);
 
   void start();
 
 private:
   void run();
 
-  WebsocketParser parser_;
+  moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue_;
 
   std::atomic<bool> &running_;
   std::jthread thread_;

@@ -1,3 +1,4 @@
+#include "common/websocket_data_types.hpp"
 #include "network/auth/websocket_headers.hpp"
 #include "network/websocket/websocket_client.hpp"
 
@@ -11,6 +12,9 @@
 
 #include <openssl/err.h>
 
+#include "moodycamel/readerwriterqueue.h"
+
+#include <atomic>
 #include <cstdlib>
 #include <exception>
 #include <format>
@@ -25,8 +29,10 @@ namespace net = boost::asio;
 namespace ssl = boost::asio::ssl;
 using tcp = boost::asio::ip::tcp;
 
-WebsocketClient::WebsocketClient(std::atomic<bool> &running)
-    : running_{running} {}
+WebsocketClient::WebsocketClient(
+    moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue,
+    std::atomic<bool> &running)
+    : parser_{websocket_queue}, running_{running} {}
 
 void WebsocketClient::start() {
   thread_ = std::jthread(&WebsocketClient::run, this);
@@ -53,7 +59,7 @@ void WebsocketClient::run() {
     websocket::stream<beast::ssl_stream<tcp::socket>> ws{ioc, ctx};
 
     auto const results = resolver.resolve(websocket_host, websocket_port);
-    auto ep = net::connect(get_lowest_layer(ws), results);
+    auto endpoint = net::connect(get_lowest_layer(ws), results);
 
     if (!SSL_set_tlsext_host_name(ws.next_layer().native_handle(),
                                   websocket_host.c_str())) {
@@ -71,22 +77,31 @@ void WebsocketClient::run() {
         }));
 
     std::string host_with_port{websocket_host + ":" +
-                               std::to_string(ep.port())};
+                               std::to_string(endpoint.port())};
     ws.handshake(host_with_port, websocket_target);
 
-    std::cout << std::format(
-        "Connected to Kalshi websocket at {}{}\n", websocket_host,
-        websocket_target);
+    std::cout << std::format("Connected to Kalshi websocket at {}{}\n",
+                             websocket_host, websocket_target);
 
-    std::string sub_msg{
-        R"({"id": 1, "cmd": "subscribe", "params": {"channels": ["ticker"]}})"};
+    std::string market{"KXHORMUZNORM-26MAR17-B260701"};
+    std::string sub_msg{std::format(
+        R"({{"id": 2, "cmd": "subscribe", "params": {{"channels": ["orderbook_delta", "trade"], "market_tickers": ["{}"]}}}})",
+        market)};
     ws.write(net::buffer(sub_msg));
     std::cout << std::format("Sent subscription payload: {}\n", sub_msg);
 
+    beast::flat_buffer buffer;
+    boost::system::error_code error_code;
     while (running_.load(std::memory_order_relaxed)) {
-      beast::flat_buffer buffer;
-      ws.read(buffer);
+      ws.read(buffer, error_code);
+
+      auto data = boost::beast::buffers_front(buffer.data());
+
+      parser_.parseAndPush(data);
+
       std::cout << "Received: " << beast::make_printable(buffer.data()) << '\n';
+
+      buffer.consume(buffer.size());
     }
   } catch (const std::exception &e) {
     std::cerr << std::format(
