@@ -1,7 +1,10 @@
 {
   "name": "3fish",
+  "builtin-baseline": "0dee4941ac0643c45ac2ca7eee1ae7a0746da32a",
   "dependencies": [
     "boost-beast",
+    "boost-system",
+    "boost-filesystem",
     "gtest",
     "openssl",
     "simdjson"

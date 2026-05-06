@@ -1,13 +1,24 @@
 add_library(3fishCore STATIC
-  websocket/websocket_client.cpp
+  network/auth/websocket_headers.hpp
+  network/auth/websocket_headers.cpp
+  network/websocket/websocket_client.hpp
+  network/websocket/websocket_client.cpp
 )
+
+target_include_directories(3fishCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(3fishCore PUBLIC
   OpenSSL::SSL
   OpenSSL::Crypto
   Boost::system
+  Boost::filesystem
   simdjson::simdjson
 )
+
+if(WIN32)
+  target_link_libraries(3fishCore PUBLIC ws2_32 mswsock bcrypt)
+  target_compile_definitions(3fishCore PUBLIC -D_WIN32_WINNT=0x0A00)
+endif()
 
 add_executable(3fish main.cpp)
 target_link_libraries(3fish PRIVATE 3fishCore)
