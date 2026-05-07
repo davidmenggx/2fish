@@ -83,6 +83,7 @@ void WebsocketClient::run() {
     std::cout << std::format("Connected to Kalshi websocket at {}{}\n",
                              websocket_host, websocket_target);
 
+    // TODO: Replace this with a Config read
     std::string market{"KXHORMUZNORM-26MAR17-B260701"};
     std::string sub_msg{std::format(
         R"({{"id": 2, "cmd": "subscribe", "params": {{"channels": ["orderbook_delta", "trade"], "market_tickers": ["{}"]}}}})",
