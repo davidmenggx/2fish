@@ -1,6 +1,6 @@
+#include "network/websocket/websocket_client.hpp"
 #include "common/websocket_data_types.hpp"
 #include "network/auth/websocket_headers.hpp"
-#include "network/websocket/websocket_client.hpp"
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -91,18 +91,32 @@ void WebsocketClient::run() {
     ws.write(net::buffer(sub_msg));
     std::cout << std::format("Sent subscription payload: {}\n", sub_msg);
 
-    beast::flat_buffer buffer;
+    std::string rx_buffer;
     boost::system::error_code error_code;
     while (running_.load(std::memory_order_relaxed)) {
-      ws.read(buffer, error_code);
+      rx_buffer.clear();
 
-      auto data = boost::beast::buffers_front(buffer.data());
+      auto dyn_buffer = boost::asio::dynamic_buffer(rx_buffer);
+      ws.read(dyn_buffer, error_code);
 
-      parser_.parseAndPush(data);
+      if (error_code) {
+        std::cerr << "CRITICAL: Read error: " << error_code.message() << '\n';
+        break;
+        // TODO: Try a reconnect here
+      }
 
-      std::cout << "Received: " << beast::make_printable(buffer.data()) << '\n';
+      if (rx_buffer.empty())
+        continue;
 
-      buffer.consume(buffer.size());
+      if (rx_buffer.capacity() <
+          rx_buffer.size() + simdjson::SIMDJSON_PADDING) {
+        rx_buffer.reserve(rx_buffer.size() + simdjson::SIMDJSON_PADDING);
+      }
+
+      simdjson::padded_string_view padded_data(
+          rx_buffer.data(), rx_buffer.size(), rx_buffer.capacity());
+
+      parser_.parseAndPush(padded_data);
     }
   } catch (const std::exception &e) {
     std::cerr << std::format(

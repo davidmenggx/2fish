@@ -6,14 +6,12 @@
 
 #include <simdjson.h>
 
-#include <boost/asio/buffer.hpp>
-
 class WebsocketParser {
 public:
   WebsocketParser(
       moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue);
 
-  void parseAndPush(boost::asio::mutable_buffer buffer);
+  void parseAndPush(simdjson::padded_string_view padded_json);
 
 private:
   simdjson::ondemand::parser parser_{};
