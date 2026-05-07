@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/websocket_data_types.hpp"
+#include "config.hpp"
 #include "websocket_parser.hpp"
 
 #include "moodycamel/readerwriterqueue.h"
@@ -12,12 +13,14 @@ class WebsocketClient {
 public:
   WebsocketClient(
       moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue,
-      std::atomic<bool> &running);
+      Config config, std::atomic<bool> &running);
 
   void start();
 
 private:
   void run();
+
+  const Config config_;
 
   WebsocketParser parser_;
 

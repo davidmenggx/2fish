@@ -1,7 +1,7 @@
 add_library(3fishCore STATIC
   common/types.hpp
   common/websocket_data_types.hpp
-  config.h
+  config.hpp
   driver/driver.hpp
   driver/driver.cpp
   engine/engine.hpp

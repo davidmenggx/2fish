@@ -1,5 +1,6 @@
 #include "network/websocket/websocket_client.hpp"
 #include "common/websocket_data_types.hpp"
+#include "config.hpp"
 #include "network/auth/websocket_headers.hpp"
 
 #include <boost/asio/connect.hpp>
@@ -13,6 +14,8 @@
 #include <openssl/err.h>
 
 #include "moodycamel/readerwriterqueue.h"
+
+#include <simdjson.h>
 
 #include <atomic>
 #include <cstdlib>
@@ -31,8 +34,8 @@ using tcp = boost::asio::ip::tcp;
 
 WebsocketClient::WebsocketClient(
     moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue,
-    std::atomic<bool> &running)
-    : parser_{websocket_queue}, running_{running} {}
+    Config config, std::atomic<bool> &running)
+    : parser_{websocket_queue}, config_{config}, running_{running} {}
 
 void WebsocketClient::start() {
   thread_ = std::jthread(&WebsocketClient::run, this);
@@ -83,11 +86,9 @@ void WebsocketClient::run() {
     std::cout << std::format("Connected to Kalshi websocket at {}{}\n",
                              websocket_host, websocket_target);
 
-    // TODO: Replace this with a Config read
-    std::string market{"KXHORMUZNORM-26MAR17-B260701"};
     std::string sub_msg{std::format(
         R"({{"id": 2, "cmd": "subscribe", "params": {{"channels": ["orderbook_delta", "trade"], "market_tickers": ["{}"]}}}})",
-        market)};
+        config_.market_ticker_)};
     ws.write(net::buffer(sub_msg));
     std::cout << std::format("Sent subscription payload: {}\n", sub_msg);
 

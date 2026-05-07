@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/websocket_data_types.hpp"
-#include "config.h"
+#include "config.hpp"
 
 #include "moodycamel/readerwriterqueue.h"
 
@@ -17,6 +17,8 @@ public:
 
 private:
   void run();
+
+  const Config config_;
 
   moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue_;
 
