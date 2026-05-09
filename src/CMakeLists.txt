@@ -1,9 +1,11 @@
 add_library(3fishCore STATIC
-  common/types.hpp
-  common/websocket_data_types.hpp
+  common/core/types.hpp
+  common/core/websocket_data_types.hpp
   config.hpp
   driver/driver.hpp
   driver/driver.cpp
+  engine/store/orderbook_store.hpp
+  engine/store/orderbook_store.cpp
   engine/engine.hpp
   engine/engine.cpp
   network/auth/websocket_headers.hpp

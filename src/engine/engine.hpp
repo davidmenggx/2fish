@@ -1,7 +1,8 @@
 #pragma once
 
-#include "common/websocket_data_types.hpp"
+#include "common/core/websocket_data_types.hpp"
 #include "config.hpp"
+#include "store/orderbook_store.hpp"
 
 #include "moodycamel/readerwriterqueue.h"
 
@@ -21,6 +22,8 @@ private:
   const Config config_;
 
   moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue_;
+
+  OrderbookStore orderbook_store_{};
 
   std::atomic<bool> &running_;
   std::jthread thread_;

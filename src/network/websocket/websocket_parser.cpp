@@ -1,11 +1,15 @@
 #include "websocket_parser.hpp"
-#include "common/websocket_data_types.hpp"
+#include "common/core/types.hpp"
+#include "common/core/websocket_data_types.hpp"
 
 #include "moodycamel/readerwriterqueue.h"
 
 #include <simdjson.h>
 
-#include <charconv>
+#include <cmath>
+#include <cstdint>
+#include <iostream>
+#include <string_view>
 
 WebsocketParser::WebsocketParser(
     moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue)
@@ -70,6 +74,9 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
               orderbook_snapshot_accumulator.market_ticker_ = market_ticker;
               orderbook_delta_accumulator.market_ticker_ = market_ticker;
               trade_accumulator.market_ticker_ = market_ticker;
+            } else {
+              std::cout << "Couldn't get market_ticker, skipping\n";
+              return;
             }
           }
           if (body_key == "market_id") {
@@ -77,6 +84,9 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
             if (!inner_val.get_string().get(market_id)) {
               orderbook_snapshot_accumulator.market_id_ = market_id;
               orderbook_delta_accumulator.market_id_ = market_id;
+            } else {
+              std::cout << "Couldn't get market_id, skipping\n";
+              return;
             }
           }
           if (body_key == "ts_ms") {
@@ -84,6 +94,9 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
             if (!inner_val.get_int64().get(timestamp_ms)) {
               orderbook_delta_accumulator.timestamp_ms_ = timestamp_ms;
               trade_accumulator.timestamp_ms_ = timestamp_ms;
+            } else {
+              std::cout << "Couldn't get ts_ms, skipping\n";
+              return;
             }
           }
           // Fields specific to orderbook_delta type
@@ -92,12 +105,18 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
             if (!inner_val.get_double().get(price_dollars)) {
               orderbook_delta_accumulator.price_cents_ =
                   std::round(price_dollars * 100);
+            } else {
+              std::cout << "Couldn't get price_dollars, skipping\n";
+              return;
             }
           }
           if (body_key == "delta_fp") {
             double delta_fp{};
             if (!inner_val.get_double().get(delta_fp)) {
               orderbook_delta_accumulator.delta_ = delta_fp;
+            } else {
+              std::cout << "Couldn't get delta_fp, skipping\n";
+              return;
             }
           }
           if (body_key == "side") {
@@ -107,6 +126,9 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
                 orderbook_delta_accumulator.side_ = Side::Yes;
               if (side == "no")
                 orderbook_delta_accumulator.side_ = Side::No;
+            } else {
+              std::cout << "Couldn't get side, skipping\n";
+              return;
             }
           }
           // Fields specific to trade type
@@ -114,6 +136,9 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
             std::string_view trade_id;
             if (!inner_val.get_string().get(trade_id)) {
               trade_accumulator.trade_id_ = trade_id;
+            } else {
+              std::cout << "Couldn't get trade_id, skipping\n";
+              return;
             }
           }
           if (body_key == "yes_price_dollars") {
@@ -121,6 +146,9 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
             if (!inner_val.get_double().get(yes_price_dollars)) {
               trade_accumulator.yes_price_cents_ =
                   std::round(yes_price_dollars * 100);
+            } else {
+              std::cout << "Couldn't get yes_price_dollars, skipping\n";
+              return;
             }
           }
           if (body_key == "no_price_dollars") {
@@ -128,12 +156,18 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
             if (!inner_val.get_double().get(no_price_dollars)) {
               trade_accumulator.no_price_cents_ =
                   std::round(no_price_dollars * 100);
+            } else {
+              std::cout << "Couldn't get no_price_dollars, skipping\n";
+              return;
             }
           }
           if (body_key == "count_fp") {
             double count_fp{};
             if (!inner_val.get_double().get(count_fp)) {
               trade_accumulator.contracts_traded_ = count_fp;
+            } else {
+              std::cout << "Couldn't get count_fp, skipping\n";
+              return;
             }
           }
           if (body_key == "taker_side") {
@@ -143,9 +177,76 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
                 trade_accumulator.taker_side_ = Side::Yes;
               if (taker_side == "no")
                 trade_accumulator.taker_side_ = Side::No;
+            } else {
+              std::cout << "Couldn't get taker_side, skipping\n";
+              return;
             }
           }
           // Fields specific to orderbook_snapshot type
+          if (body_key == "yes_dollars_fp") {
+            simdjson::ondemand::array arr;
+            if (val.get_array().get(arr)) {
+              std::cout << "Couldn't get yes_dollars_fp, skipping\n";
+              return;
+            }
+            for (simdjson::ondemand::value element : arr) {
+              simdjson::ondemand::array pair;
+              if (element.get_array().get(pair)) {
+                std::cout
+                    << "Couldn't get yes_dollars_fp inner level, skipping\n";
+                return;
+              }
+              double tmp_price_level{};
+              double tmp_volume{};
+
+              auto price_level_err{
+                  pair.at(0).get_double().get(tmp_price_level)};
+
+              auto volume_err{pair.at(1).get_double().get(tmp_volume)};
+
+              if (price_level_err || volume_err) {
+                std::cout
+                    << "Couldn't get yes_dollars_fp inner level, skipping\n";
+                return;
+              }
+              uint8_t price_level{
+                  static_cast<uint8_t>(std::round(tmp_price_level * 100))};
+              orderbook_snapshot_accumulator.yes_dollars_[price_level] +=
+                  static_cast<long double>(tmp_volume);
+            }
+          }
+          if (body_key == "no_dollars_fp") {
+            simdjson::ondemand::array arr;
+            if (val.get_array().get(arr)) {
+              std::cout << "Couldn't get no_dollars_fp, skipping\n";
+              return;
+            }
+            for (simdjson::ondemand::value element : arr) {
+              simdjson::ondemand::array pair;
+              if (element.get_array().get(pair)) {
+                std::cout
+                    << "Couldn't get no_dollars_fp inner level, skipping\n";
+                return;
+              }
+              double tmp_price_level{};
+              double tmp_volume{};
+
+              auto price_level_err{
+                  pair.at(0).get_double().get(tmp_price_level)};
+
+              auto volume_err{pair.at(1).get_double().get(tmp_volume)};
+
+              if (price_level_err || volume_err) {
+                std::cout
+                    << "Couldn't get no_dollars_fp inner level, skipping\n";
+                return;
+              }
+              uint8_t price_level{
+                  static_cast<uint8_t>(std::round(tmp_price_level * 100))};
+              orderbook_snapshot_accumulator.no_dollars_[price_level] +=
+                  static_cast<long double>(tmp_volume);
+            }
+          }
         }
       }
     }

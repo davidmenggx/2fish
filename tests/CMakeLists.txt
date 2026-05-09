@@ -1,7 +1,7 @@
 find_package(GTest CONFIG REQUIRED)
 
 add_executable(3fishTests
-  placeholder_test.cpp
+  test_websocket_parser.cpp
 )
 
 target_link_libraries(3fishTests PRIVATE

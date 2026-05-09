@@ -2,16 +2,20 @@
 
 #include "types.hpp"
 
+#include <variant>
+
 #include <array>
 #include <cstdint>
 #include <string>
-#include <variant>
+#include <string_view>
 
 struct OrderbookSnapshotMessage {
   std::string market_ticker_{};
   std::string market_id_{};
   std::array<long double, 101> yes_dollars_{};
   std::array<long double, 101> no_dollars_{};
+
+  bool operator==(const OrderbookSnapshotMessage &) const = default;
 };
 
 struct OrderbookDeltaMessage {
@@ -21,6 +25,8 @@ struct OrderbookDeltaMessage {
   long double delta_{};
   Side side_{};
   int64_t timestamp_ms_{};
+
+  bool operator==(const OrderbookDeltaMessage&) const = default;
 };
 
 struct TradeMessage {
@@ -31,6 +37,8 @@ struct TradeMessage {
   double contracts_traded_{}; // The "count_fp" field
   Side taker_side_{};
   int64_t timestamp_ms_{};
+
+  bool operator==(const TradeMessage&) const = default;
 };
 
 struct WebsocketMessage {
@@ -43,7 +51,8 @@ struct WebsocketMessage {
       body_;
 };
 
-inline WebsocketMessage::MessageType getWebsocketMessageType(std::string_view raw_type) {
+inline WebsocketMessage::MessageType
+getWebsocketMessageType(std::string_view raw_type) {
   if (raw_type == "orderbook_snapshot")
     return WebsocketMessage::MessageType::OrderbookSnapshot;
   else if (raw_type == "orderbook_delta")

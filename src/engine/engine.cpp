@@ -1,10 +1,11 @@
 #include "engine.hpp"
-#include "common/websocket_data_types.hpp"
+#include "common/core/websocket_data_types.hpp"
 #include "config.hpp"
 
 #include "moodycamel/readerwriterqueue.h"
 
 #include <atomic>
+#include <intrin0.inl.h>
 #include <iostream>
 #include <thread>
 
@@ -29,17 +30,20 @@ void Engine::run() {
     }
 
     switch (websocket_message.message_type_) {
-    case WebsocketMessage::MessageType::OrderbookSnapshot:
-      std::cout << "Got an orderbook snapshot\n";
-      break;
-    case WebsocketMessage::MessageType::OrderbookDelta:
-      std::cout << "Got an orderbook delta\n";
+    case WebsocketMessage::MessageType::Unknown:
+      std::cout << "Got an unknown message type\n";
       break;
     case WebsocketMessage::MessageType::Trade:
       std::cout << "Got a trade\n";
       break;
-    case WebsocketMessage::MessageType::Unknown:
-      std::cout << "Got an unknown message type\n";
+    case WebsocketMessage::MessageType::OrderbookSnapshot:
+      [[fallthrough]];
+    case WebsocketMessage::MessageType::OrderbookDelta:
+      std::cout << "Got an orderbook message\n";
+      if (orderbook_store_.recordOrderbookMessage(websocket_message)) {
+        std::cerr << "Sequence ID mismatch! Triggering re-fetch\n";
+        // TODO: Handle sequence id mismatch
+      }
       break;
     }
   }

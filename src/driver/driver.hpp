@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/websocket_data_types.hpp"
+#include "common/core/websocket_data_types.hpp"
 #include "config.hpp"
 #include "engine/engine.hpp"
 #include "network/websocket/websocket_client.hpp"

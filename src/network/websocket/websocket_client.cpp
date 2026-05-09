@@ -1,5 +1,5 @@
 #include "network/websocket/websocket_client.hpp"
-#include "common/websocket_data_types.hpp"
+#include "common/core/websocket_data_types.hpp"
 #include "config.hpp"
 #include "network/auth/websocket_headers.hpp"
 
@@ -72,9 +72,15 @@ void WebsocketClient::run() {
 
     ws.next_layer().handshake(ssl::stream_base::client);
 
+    const char *api_key_env = std::getenv("3FISH_KALSHI_API_KEY");
+    if (!api_key_env) {
+      throw std::runtime_error(
+          "CRITICAL: API Key environment variable not set.");
+    }
+
     ws.set_option(
         websocket::stream_base::decorator([=](websocket::request_type &req) {
-          req.set("KALSHI-ACCESS-KEY", std::getenv("3FISH_KALSHI_API_KEY"));
+          req.set("KALSHI-ACCESS-KEY", api_key_env);
           req.set("KALSHI-ACCESS-SIGNATURE", websocket_signature);
           req.set("KALSHI-ACCESS-TIMESTAMP", signing_ts);
         }));
@@ -86,27 +92,27 @@ void WebsocketClient::run() {
     std::cout << std::format("Connected to Kalshi websocket at {}{}\n",
                              websocket_host, websocket_target);
 
-    std::string sub_msg{std::format(
-        R"({{"id": 2, "cmd": "subscribe", "params": {{"channels": ["orderbook_delta", "trade"], "market_tickers": ["{}"]}}}})",
-        config_.market_ticker_)};
+    std::string sub_msg =
+        R"({"id": 2, "cmd": "subscribe", "params": {"channels": ["orderbook_delta", "trade"], "market_tickers": [")" +
+        config_.market_ticker_ + R"("]}})";
     ws.write(net::buffer(sub_msg));
     std::cout << std::format("Sent subscription payload: {}\n", sub_msg);
 
-    std::string rx_buffer;
+    boost::beast::flat_buffer rx_buffer;
     boost::system::error_code error_code;
+
     while (running_.load(std::memory_order_relaxed)) {
       rx_buffer.clear();
 
-      auto dyn_buffer = boost::asio::dynamic_buffer(rx_buffer);
-      ws.read(dyn_buffer, error_code);
+      ws.read(rx_buffer, error_code);
 
       if (error_code) {
         std::cerr << "CRITICAL: Read error: " << error_code.message() << '\n';
-        break;
         // TODO: Try a reconnect here
+        break;
       }
 
-      if (rx_buffer.empty())
+      if (rx_buffer.size() == 0)
         continue;
 
       if (rx_buffer.capacity() <
@@ -114,8 +120,11 @@ void WebsocketClient::run() {
         rx_buffer.reserve(rx_buffer.size() + simdjson::SIMDJSON_PADDING);
       }
 
-      simdjson::padded_string_view padded_data(
-          rx_buffer.data(), rx_buffer.size(), rx_buffer.capacity());
+      const char *data_ptr =
+          static_cast<const char *>(rx_buffer.cdata().data());
+
+      simdjson::padded_string_view padded_data(data_ptr, rx_buffer.size(),
+                                               rx_buffer.capacity());
 
       parser_.parseAndPush(padded_data);
     }
