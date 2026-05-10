@@ -4,13 +4,13 @@
 #include "common/core/websocket_data_types.hpp"
 #include "constants.hpp"
 
-#include <variant>
-
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
+#include <variant>
 
 OrderbookStore::OrderbookStore()
     : yes_buffer_{std::make_unique<RingBuffer<
@@ -47,6 +47,11 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
   if (message_body->price_cents_ > 100 || message_body->price_cents_ < 0)
     return;
 
+  int64_t this_message_timestamp_ms =
+      (message_body->timestamp_ms_ /
+       constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
+      constants::ORDERBOOK_HISTORY_GRANULARITY_MS;
+
   switch (message_body->side_) {
   case Side::Yes:
     // If this message falls beyond the time interval of the last message,
@@ -58,11 +63,21 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
          constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
       yes_buffer_->push(*yes_live_snapshot_);
       clearLiveYesSnapshot();
-      yes_live_snapshot_->start_timestamp_ms_ =
+      yes_live_snapshot_->start_timestamp_ms_ = this_message_timestamp_ms;
+    }
+    if (earliest_yes_timestamp_ms_ == std::numeric_limits<int64_t>::min()) {
+      earliest_yes_timestamp_ms_ = this_message_timestamp_ms;
+
+    } else {
+      earliest_yes_timestamp_ms_ =
+          std::min(earliest_yes_timestamp_ms_, this_message_timestamp_ms);
+    }
+    if (message_body->timestamp_ms_ < earliest_yes_timestamp_ms_ ||
+        earliest_yes_timestamp_ms_ == std::numeric_limits<int64_t>::min())
+      earliest_yes_timestamp_ms_ =
           (message_body->timestamp_ms_ /
            constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
           constants::ORDERBOOK_HISTORY_GRANULARITY_MS;
-    }
     yes_live_snapshot_->dollars_[message_body->price_cents_] +=
         message_body->delta_;
     break;
@@ -81,6 +96,8 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
            constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
           constants::ORDERBOOK_HISTORY_GRANULARITY_MS;
     }
+    if (earliest_no_timestamp_ms_ == std::numeric_limits<int64_t>::min())
+      earliest_no_timestamp_ms_ = no_live_snapshot_->start_timestamp_ms_;
     no_live_snapshot_->dollars_[message_body->price_cents_] +=
         message_body->delta_;
     break;
@@ -126,6 +143,12 @@ void OrderbookStore::recordOrderbookSnapshot(WebsocketMessage &message) {
   no_live_snapshot_->start_timestamp_ms_ =
       (timestamp_ms / constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
       constants::ORDERBOOK_HISTORY_GRANULARITY_MS;
+
+  if (earliest_yes_timestamp_ms_ == std::numeric_limits<int64_t>::min())
+    earliest_yes_timestamp_ms_ = timestamp_ms;
+
+  if (earliest_no_timestamp_ms_ == std::numeric_limits<int64_t>::min())
+    earliest_no_timestamp_ms_ = timestamp_ms;
 
   yes_live_snapshot_->dollars_ = std::move(message_body->yes_dollars_);
   no_live_snapshot_->dollars_ = std::move(message_body->no_dollars_);

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <chrono>
 #include <memory>
 #include <variant>
 
@@ -17,7 +18,14 @@ CandlestickStore::CandlestickStore()
       no_live_candlestick_{std::make_unique<CandlestickStoreSnapshot>()},
       no_map_{
           std::make_unique<SwmrMap<int64_t, CandlestickStoreSnapshot,
-                                   constants::CANDLESTICK_HISTORY_STEPS>>()} {}
+                                   constants::CANDLESTICK_HISTORY_STEPS>>()} {
+  auto now = std::chrono::system_clock::now();
+  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now.time_since_epoch())
+                    .count();
+  yes_live_candlestick_->start_timestamp_ms_ = now_ms;
+  no_live_candlestick_->start_timestamp_ms_ = now_ms;
+}
 
 [[nodiscard]] bool
 CandlestickStore::recordTradeMessage(WebsocketMessage &message) {

@@ -2,9 +2,7 @@
 
 #include <array>
 #include <atomic>
-#include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <type_traits>
@@ -14,7 +12,7 @@ template <typename Key, typename Value, std::size_t Capacity,
           std::size_t MaxReaders = 64, std::size_t NumBuckets = Capacity * 2>
 class SwmrMap {
   static_assert(std::is_trivially_copyable_v<Key>,
-               "Key must be trivially copyable");
+                "Key must be trivially copyable");
   static_assert(std::is_trivially_copyable_v<Value>,
                 "Value must be trivially copyable");
   static_assert(MaxReaders <= 64, "Max readers limited to 64");
@@ -251,14 +249,14 @@ private:
       }
     }
 
-    auto it = retired_list.begin();
-    while (it != retired_list.end()) {
-      if (it->epoch < min_active_epoch) {
-        delete it->node;
-        *it = retired_list.back();
+    for (std::size_t i{0}; i < retired_list.size();) {
+      if (retired_list[i].epoch < min_active_epoch) {
+        delete retired_list[i].node;
+
+        retired_list[i] = retired_list.back();
         retired_list.pop_back();
       } else {
-        ++it;
+        ++i;
       }
     }
   }

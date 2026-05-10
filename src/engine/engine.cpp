@@ -29,7 +29,7 @@ void Engine::run() {
       // engine to make sure that the candlesticks stay up to date.
       // This is probably less painful than forcing the renderer to impute
       // the data, which could break for the different widgets.
-      if ((empty_spin_count & (constants::TIME_INTERVAL_CHECK - 1)) == 0) {
+      if ((empty_spin_count & (constants::ENGINE_DEAD_SPIN - 1)) == 0) {
         auto now = std::chrono::system_clock::now();
         auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                           now.time_since_epoch())
@@ -42,13 +42,14 @@ void Engine::run() {
       continue;
     }
 
+    std::cout << "Got something\n";
+
     switch (websocket_message.message_type_) {
     case WebsocketMessage::MessageType::Unknown:
       std::cout << "Got an unknown message type\n";
       break;
     case WebsocketMessage::MessageType::Trade:
-      std::cout << "Got a trade\n";
-      if (candlestick_store_.recordTradeMessage(websocket_message)) {
+      if (!candlestick_store_.recordTradeMessage(websocket_message)) {
         std::cerr << "Sequence ID mismatch (trades)! Triggering re-fetch\n";
         // TODO: Handle sequence id mismatch
       }
@@ -56,8 +57,7 @@ void Engine::run() {
     case WebsocketMessage::MessageType::OrderbookSnapshot:
       [[fallthrough]];
     case WebsocketMessage::MessageType::OrderbookDelta:
-      std::cout << "Got an orderbook message\n";
-      if (orderbook_store_.recordOrderbookMessage(websocket_message)) {
+      if (!orderbook_store_.recordOrderbookMessage(websocket_message)) {
         std::cerr << "Sequence ID mismatch (orderbook)! Triggering re-fetch\n";
         // TODO: Handle sequence id mismatch
       }

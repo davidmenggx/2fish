@@ -13,5 +13,9 @@ inline constexpr std::size_t ORDERBOOK_HISTORY_STEPS{262'144};
 inline constexpr std::size_t CANDLESTICK_HISTORY_STEPS{512};
 
 // Engine settings
-inline constexpr uint64_t TIME_INTERVAL_CHECK{2'048};
+inline constexpr uint64_t ENGINE_DEAD_SPIN{2'048};
 } // namespace constants
+
+static_assert((constants::ENGINE_DEAD_SPIN &
+               (constants::ENGINE_DEAD_SPIN - 1)) == 0,
+              "Time interval heartbeat for engine must be a power of 2");

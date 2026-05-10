@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <memory>
 
 struct OrderbookStoreSnapshot {
@@ -19,8 +20,12 @@ public:
 
   [[nodiscard]] bool recordOrderbookMessage(WebsocketMessage &message);
 
-  [[nodiscard]] int64_t getEarliestMessageTimestampMs() const {
-    return earliest_timestamp_ms_;
+  [[nodiscard]] int64_t getEarliestYesTimestampMs() const {
+    return earliest_yes_timestamp_ms_;
+  }
+
+  [[nodiscard]] int64_t getEarliestNoTimestampMs() const {
+    return earliest_no_timestamp_ms_;
   }
 
 private:
@@ -42,6 +47,7 @@ private:
       RingBuffer<OrderbookStoreSnapshot, constants::ORDERBOOK_HISTORY_STEPS>>
       no_buffer_{nullptr};
 
-  int64_t earliest_timestamp_ms_{};
+  int64_t earliest_yes_timestamp_ms_{std::numeric_limits<int64_t>::min()};
+  int64_t earliest_no_timestamp_ms_{std::numeric_limits<int64_t>::min()};
   uint64_t last_message_seq_{};
 };
