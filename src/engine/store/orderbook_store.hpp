@@ -1,13 +1,15 @@
 #pragma once
 
 #include "common/containers/ring_buffer.hpp"
+#include "common/core/types.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "constants.hpp"
 
 #include <array>
 #include <cstdint>
-#include <limits>
 #include <memory>
+#include <optional>
+#include <vector>
 
 struct OrderbookStoreSnapshot {
   std::array<long double, 101> dollars_{};
@@ -20,13 +22,8 @@ public:
 
   [[nodiscard]] bool recordOrderbookMessage(WebsocketMessage &message);
 
-  [[nodiscard]] int64_t getEarliestYesTimestampMs() const {
-    return earliest_yes_timestamp_ms_;
-  }
-
-  [[nodiscard]] int64_t getEarliestNoTimestampMs() const {
-    return earliest_no_timestamp_ms_;
-  }
+  [[nodiscard]] std::optional<OrderbookStoreSnapshot>
+  get(int64_t query_timestamp, Side side);
 
 private:
   void clearLiveYesSnapshot();
@@ -40,14 +37,16 @@ private:
   std::unique_ptr<
       RingBuffer<OrderbookStoreSnapshot, constants::ORDERBOOK_HISTORY_STEPS>>
       yes_buffer_{nullptr};
+  std::vector<OrderbookStoreSnapshot> yes_fetch_buffer_{};
 
   // Market no side
   std::unique_ptr<OrderbookStoreSnapshot> no_live_snapshot_{nullptr};
   std::unique_ptr<
       RingBuffer<OrderbookStoreSnapshot, constants::ORDERBOOK_HISTORY_STEPS>>
       no_buffer_{nullptr};
+  std::vector<OrderbookStoreSnapshot> no_fetch_buffer_{};
 
-  int64_t earliest_yes_timestamp_ms_{std::numeric_limits<int64_t>::min()};
-  int64_t earliest_no_timestamp_ms_{std::numeric_limits<int64_t>::min()};
   uint64_t last_message_seq_{};
+  bool invalid_state_{false};
+  int64_t last_valid_timestamp_ms_{};
 };

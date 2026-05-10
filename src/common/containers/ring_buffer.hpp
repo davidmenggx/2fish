@@ -3,9 +3,7 @@
 #include <array>
 #include <atomic>
 #include <bit>
-#include <cassert>
 #include <optional>
-#include <stdexcept>
 #include <type_traits>
 #include <vector>
 
@@ -26,20 +24,6 @@ public:
       ++tail_;
     }
     ++head_;
-
-    seq_.store(seq + 2, std::memory_order_release);
-  }
-
-  void pop(T &item) {
-    std::size_t seq{seq_.load(std::memory_order_relaxed)};
-    seq_.store(seq + 1, std::memory_order_relaxed);
-
-    std::atomic_thread_fence(std::memory_order_release);
-
-    if (head_ != tail_) {
-      item = data_[tail_ & mask_];
-      ++tail_;
-    }
 
     seq_.store(seq + 2, std::memory_order_release);
   }
@@ -96,47 +80,6 @@ public:
       std::atomic_thread_fence(std::memory_order_acquire);
 
     } while (seq0 != seq_.load(std::memory_order_relaxed));
-  }
-
-  bool update_back(const T &item) {
-    std::size_t seq{seq_.load(std::memory_order_relaxed)};
-    seq_.store(seq + 1, std::memory_order_relaxed);
-
-    std::atomic_thread_fence(std::memory_order_release);
-
-    bool success{false};
-
-    if (head_ != tail_) {
-      data_[(head_ - 1) & mask_] = item;
-      success = true;
-    }
-
-    seq_.store(seq + 2, std::memory_order_release);
-
-    return success;
-  }
-
-  [[nodiscard]] bool empty() const { return size() == 0; }
-
-  [[nodiscard]] bool full() const { return size() == Capacity; }
-
-  [[nodiscard]] std::size_t size() const {
-    std::size_t current_head{}, current_tail{};
-    std::size_t seq0{};
-
-    do {
-      seq0 = seq_.load(std::memory_order_acquire);
-      if (seq0 & 1) {
-        continue;
-      }
-
-      current_head = head_;
-      current_tail = tail_;
-
-      std::atomic_thread_fence(std::memory_order_acquire);
-    } while (seq0 != seq_.load(std::memory_order_relaxed));
-
-    return current_head - current_tail;
   }
 
 private:
