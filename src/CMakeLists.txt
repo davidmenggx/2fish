@@ -33,7 +33,7 @@ target_link_libraries(3fishCore PUBLIC
 
 if(WIN32)
   target_link_libraries(3fishCore PUBLIC ws2_32 mswsock bcrypt)
-  target_compile_definitions(3fishCore PUBLIC -D_WIN32_WINNT=0x0A00)
+  target_compile_definitions(3fishCore PUBLIC -D_WIN32_WINNT=0x0A00 _CRT_SECURE_NO_WARNINGS)
 endif()
 
 add_executable(3fish main.cpp)

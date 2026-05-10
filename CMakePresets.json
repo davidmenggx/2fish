@@ -19,7 +19,8 @@
         "CMAKE_CXX_STANDARD_REQUIRED": "ON",
         "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "VCPKG_TARGET_TRIPLET": "x64-windows-static"
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+        "VCPKG_CRT_LINKAGE": "static"
       }
     },
     {

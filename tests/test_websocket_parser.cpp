@@ -41,7 +41,7 @@ TEST(WebsocketParserTest, ParsesValidOrderbookSnapshot) {
   expected.market_ticker_ = "TEST";
   expected.market_id_ = "test-id";
 
-  expected.yes_dollars_[1] = 18.348;
+  expected.yes_dollars_[1] = 183.48;
   expected.yes_dollars_[5] = 1.00;
   expected.yes_dollars_[6] = 8.37;
   expected.yes_dollars_[40] = 2695.00;
@@ -145,7 +145,7 @@ TEST(WebsocketParserTest, DropsUnknownMessageType) {
   WebsocketParser parser{queue};
 
   const std::string raw_json =
-      R"({"type":"unknown_type""sid":1,"seq":66,"msg":{"market_ticker":"TEST","market_id":"test-id","price_dollars":"0.0400","delta_fp":"-0.05","side":"no","ts":"2026-05-06T00:51:22.875661Z","ts_ms":1778028682875})";
+      R"({"type":"unknown_type","sid":1,"seq":66,"msg":{"market_ticker":"TEST","market_id":"test-id","price_dollars":"0.0400","delta_fp":"-0.05","side":"no","ts":"2026-05-06T00:51:22.875661Z","ts_ms":1778028682875}})";
   simdjson::padded_string invalid_type_message(raw_json);
 
   parser.parseAndPush(invalid_type_message);

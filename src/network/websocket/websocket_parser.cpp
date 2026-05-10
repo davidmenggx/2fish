@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <string>
 #include <string_view>
 
 WebsocketParser::WebsocketParser(
@@ -101,8 +102,9 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
           }
           // Fields specific to orderbook_delta type
           if (body_key == "price_dollars") {
-            double price_dollars{};
-            if (!inner_val.get_double().get(price_dollars)) {
+            std::string_view price_str;
+            if (!inner_val.get_string().get(price_str)) {
+              double price_dollars = std::stod(std::string(price_str));
               orderbook_delta_accumulator.price_cents_ =
                   std::round(price_dollars * 100);
             } else {
@@ -111,9 +113,10 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
             }
           }
           if (body_key == "delta_fp") {
-            double delta_fp{};
-            if (!inner_val.get_double().get(delta_fp)) {
-              orderbook_delta_accumulator.delta_ = delta_fp;
+            std::string_view delta_str;
+            if (!inner_val.get_string().get(delta_str)) {
+              orderbook_delta_accumulator.delta_ =
+                  std::stod(std::string(delta_str));
             } else {
               std::cout << "Couldn't get delta_fp, skipping\n";
               return;
@@ -142,31 +145,32 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
             }
           }
           if (body_key == "yes_price_dollars") {
-            double yes_price_dollars{};
-            if (!inner_val.get_double().get(yes_price_dollars)) {
-              trade_accumulator.yes_price_cents_ =
-                  std::round(yes_price_dollars * 100);
+            std::string_view yes_price_str;
+            if (!inner_val.get_string().get(yes_price_str)) {
+              double yes_price = std::stod(std::string(yes_price_str));
+              trade_accumulator.yes_price_cents_ = std::round(yes_price * 100);
             } else {
               std::cout << "Couldn't get yes_price_dollars, skipping\n";
               return;
             }
           }
           if (body_key == "no_price_dollars") {
-            double no_price_dollars{};
-            if (!inner_val.get_double().get(no_price_dollars)) {
-              trade_accumulator.no_price_cents_ =
-                  std::round(no_price_dollars * 100);
+            std::string_view no_price_str;
+            if (!inner_val.get_string().get(no_price_str)) {
+              double no_price = std::stod(std::string(no_price_str));
+              trade_accumulator.no_price_cents_ = std::round(no_price * 100);
             } else {
               std::cout << "Couldn't get no_price_dollars, skipping\n";
               return;
             }
           }
           if (body_key == "count_fp") {
-            double count_fp{};
-            if (!inner_val.get_double().get(count_fp)) {
-              trade_accumulator.contracts_traded_ = count_fp;
+            std::string_view count_fp_str;
+            if (!inner_val.get_string().get(count_fp_str)) {
+              trade_accumulator.contracts_traded_ =
+                  std::stod(std::string(count_fp_str));
             } else {
-              std::cout << "Couldn't get count_fp, skipping\n";
+              std::cout << "Couldn't get no_price_dollars, skipping\n";
               return;
             }
           }
@@ -185,64 +189,90 @@ void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
           // Fields specific to orderbook_snapshot type
           if (body_key == "yes_dollars_fp") {
             simdjson::ondemand::array arr;
-            if (val.get_array().get(arr)) {
+            if (inner_val.get_array().get(arr)) {
               std::cout << "Couldn't get yes_dollars_fp, skipping\n";
               return;
             }
             for (simdjson::ondemand::value element : arr) {
               simdjson::ondemand::array pair;
               if (element.get_array().get(pair)) {
-                std::cout
-                    << "Couldn't get yes_dollars_fp inner level, skipping\n";
+                std::cout << "Couldn't get inner level array, skipping\n";
                 return;
               }
-              double tmp_price_level{};
-              double tmp_volume{};
 
-              auto price_level_err{
-                  pair.at(0).get_double().get(tmp_price_level)};
+              std::string_view price_str, vol_str;
+              std::size_t idx{0};
 
-              auto volume_err{pair.at(1).get_double().get(tmp_volume)};
+              for (simdjson::ondemand::value pair_val : pair) {
+                if (idx == 0) {
+                  if (pair_val.get_string().get(price_str)) {
+                    std::cout << "Couldn't get price string, skipping\n";
+                    return;
+                  }
+                } else if (idx == 1) {
+                  if (pair_val.get_string().get(vol_str)) {
+                    std::cout << "Couldn't get volume string, skipping\n";
+                    return;
+                  }
+                }
+                idx++;
+              }
 
-              if (price_level_err || volume_err) {
-                std::cout
-                    << "Couldn't get yes_dollars_fp inner level, skipping\n";
+              if (idx < 2) {
+                std::cout << "Incomplete pair array, skipping\n";
                 return;
               }
-              uint8_t price_level{
-                  static_cast<uint8_t>(std::round(tmp_price_level * 100))};
+
+              double tmp_price_level{std::stod(std::string(price_str))};
+              double tmp_volume{std::stod(std::string(vol_str))};
+
+              uint8_t price_level =
+                  static_cast<uint8_t>(std::round(tmp_price_level * 100));
               orderbook_snapshot_accumulator.yes_dollars_[price_level] +=
                   static_cast<long double>(tmp_volume);
             }
           }
           if (body_key == "no_dollars_fp") {
             simdjson::ondemand::array arr;
-            if (val.get_array().get(arr)) {
+            if (inner_val.get_array().get(arr)) {
               std::cout << "Couldn't get no_dollars_fp, skipping\n";
               return;
             }
             for (simdjson::ondemand::value element : arr) {
               simdjson::ondemand::array pair;
               if (element.get_array().get(pair)) {
-                std::cout
-                    << "Couldn't get no_dollars_fp inner level, skipping\n";
+                std::cout << "Couldn't get inner level array, skipping\n";
                 return;
               }
-              double tmp_price_level{};
-              double tmp_volume{};
 
-              auto price_level_err{
-                  pair.at(0).get_double().get(tmp_price_level)};
+              std::string_view price_str, vol_str;
+              std::size_t idx{0};
 
-              auto volume_err{pair.at(1).get_double().get(tmp_volume)};
+              for (simdjson::ondemand::value pair_val : pair) {
+                if (idx == 0) {
+                  if (pair_val.get_string().get(price_str)) {
+                    std::cout << "Couldn't get price string, skipping\n";
+                    return;
+                  }
+                } else if (idx == 1) {
+                  if (pair_val.get_string().get(vol_str)) {
+                    std::cout << "Couldn't get volume string, skipping\n";
+                    return;
+                  }
+                }
+                idx++;
+              }
 
-              if (price_level_err || volume_err) {
-                std::cout
-                    << "Couldn't get no_dollars_fp inner level, skipping\n";
+              if (idx < 2) {
+                std::cout << "Incomplete pair array, skipping\n";
                 return;
               }
-              uint8_t price_level{
-                  static_cast<uint8_t>(std::round(tmp_price_level * 100))};
+
+              double tmp_price_level{std::stod(std::string(price_str))};
+              double tmp_volume{std::stod(std::string(vol_str))};
+
+              uint8_t price_level =
+                  static_cast<uint8_t>(std::round(tmp_price_level * 100));
               orderbook_snapshot_accumulator.no_dollars_[price_level] +=
                   static_cast<long double>(tmp_volume);
             }

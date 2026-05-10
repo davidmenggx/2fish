@@ -22,6 +22,7 @@
 #include <exception>
 #include <format>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -50,9 +51,13 @@ void WebsocketClient::run() {
     // Kalshi websocket payload
     std::string signing_ts{getSigningTimestampMs()};
     std::string websocket_msg_to_sign{signing_ts + "GET" + websocket_target};
-    std::string websocket_signature{generateKalshiSignature(
-        websocket_msg_to_sign,
-        std::getenv("3FISH_KALSHI_API_PRIVATE_KEY_PATH"))};
+    const char *api_key_path = std::getenv("3FISH_KALSHI_API_PRIVATE_KEY_PATH");
+    if (!api_key_path) {
+      throw std::runtime_error(
+          "CRITICAL: API Key Path environment variable not set");
+    }
+    std::string websocket_signature{
+        generateKalshiSignature(websocket_msg_to_sign, api_key_path)};
 
     net::io_context ioc;
     ssl::context ctx{ssl::context::tlsv12_client};
@@ -75,7 +80,7 @@ void WebsocketClient::run() {
     const char *api_key_env = std::getenv("3FISH_KALSHI_API_KEY");
     if (!api_key_env) {
       throw std::runtime_error(
-          "CRITICAL: API Key environment variable not set.");
+          "CRITICAL: API Key environment variable not set");
     }
 
     ws.set_option(

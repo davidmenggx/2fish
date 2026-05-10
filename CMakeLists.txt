@@ -1,4 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.24)
+cmake_policy(SET CMP0091 NEW)
 
 project(3fish VERSION 1.0.0 LANGUAGES CXX C)
 
