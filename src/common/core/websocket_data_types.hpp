@@ -32,8 +32,8 @@ struct OrderbookDeltaMessage {
 struct TradeMessage {
   std::string market_ticker_{};
   std::string trade_id_{}; // TODO: Only keep if we are using a live-trade log
-  int8_t yes_price_cents_{};
-  int8_t no_price_cents_{};
+  uint8_t yes_price_cents_{};
+  uint8_t no_price_cents_{};
   double contracts_traded_{}; // The "count_fp" field
   Side taker_side_{};
   int64_t timestamp_ms_{};

@@ -1,11 +1,14 @@
 #include "engine.hpp"
 #include "common/core/websocket_data_types.hpp"
+#include "common/utils/cpu_relax.hpp"
 #include "config.hpp"
+#include "constants.hpp"
 
 #include "moodycamel/readerwriterqueue.h"
 
 #include <atomic>
-#include <intrin0.inl.h>
+#include <cstdint>
+#include <chrono>
 #include <iostream>
 #include <thread>
 
@@ -17,15 +20,25 @@ void Engine::start() { thread_ = std::jthread(&Engine::run, this); }
 
 void Engine::run() {
   WebsocketMessage websocket_message;
+  uint64_t empty_spin_count{0};
   while (running_.load(std::memory_order_relaxed)) {
     if (!websocket_queue_.try_dequeue(websocket_message)) {
-      // spin wait
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) ||             \
-    defined(_M_IX86)
-      _mm_pause();
-#elif defined(__aarch64__) || defined(_M_ARM64)
-      __asm__ volatile("yield" ::: "memory");
-#endif
+      ++empty_spin_count;
+
+      // In case the market goes silent, periodically force a write on the
+      // engine to make sure that the candlesticks stay up to date.
+      // This is probably less painful than forcing the renderer to impute
+      // the data, which could break for the different widgets.
+      if ((empty_spin_count & (constants::TIME_INTERVAL_CHECK - 1)) == 0) {
+        auto now = std::chrono::system_clock::now();
+        auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          now.time_since_epoch())
+                          .count();
+        candlestick_store_.tryRolloverYesCandlestick(now_ms);
+        candlestick_store_.tryRolloverNoCandlestick(now_ms);
+      }
+
+      cpuRelax();
       continue;
     }
 
@@ -35,16 +48,22 @@ void Engine::run() {
       break;
     case WebsocketMessage::MessageType::Trade:
       std::cout << "Got a trade\n";
+      if (candlestick_store_.recordTradeMessage(websocket_message)) {
+        std::cerr << "Sequence ID mismatch (trades)! Triggering re-fetch\n";
+        // TODO: Handle sequence id mismatch
+      }
       break;
     case WebsocketMessage::MessageType::OrderbookSnapshot:
       [[fallthrough]];
     case WebsocketMessage::MessageType::OrderbookDelta:
       std::cout << "Got an orderbook message\n";
       if (orderbook_store_.recordOrderbookMessage(websocket_message)) {
-        std::cerr << "Sequence ID mismatch! Triggering re-fetch\n";
+        std::cerr << "Sequence ID mismatch (orderbook)! Triggering re-fetch\n";
         // TODO: Handle sequence id mismatch
       }
       break;
     }
+
+    empty_spin_count = 0;
   }
 }

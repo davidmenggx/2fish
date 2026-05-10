@@ -2,6 +2,7 @@
 
 #include "common/core/websocket_data_types.hpp"
 #include "config.hpp"
+#include "store/candlestick_store.hpp"
 #include "store/orderbook_store.hpp"
 
 #include "moodycamel/readerwriterqueue.h"
@@ -24,6 +25,7 @@ private:
   moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue_;
 
   OrderbookStore orderbook_store_{};
+  CandlestickStore candlestick_store_{};
 
   std::atomic<bool> &running_;
   std::jthread thread_;

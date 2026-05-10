@@ -5,9 +5,8 @@ project(3fish VERSION 1.0.0 LANGUAGES CXX C)
 if(MSVC)    
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<CONFIG:Debug,RelWithDebInfo>,EditAndContinue,ProgramDatabase>")
+  add_compile_options(/EHsc)
 endif()
-
-add_compile_options(/EHsc)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

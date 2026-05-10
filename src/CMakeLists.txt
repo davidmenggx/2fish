@@ -4,6 +4,8 @@ add_library(3fishCore STATIC
   config.hpp
   driver/driver.hpp
   driver/driver.cpp
+  engine/store/candlestick_store.hpp
+  engine/store/candlestick_store.cpp
   engine/store/orderbook_store.hpp
   engine/store/orderbook_store.cpp
   engine/engine.hpp
