@@ -11,7 +11,6 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <vector>
 
 struct OrderbookStoreSnapshot {
   std::array<long double, 101> dollars_{};
@@ -47,7 +46,6 @@ private:
   std::unique_ptr<
       RingBuffer<OrderbookStoreSnapshot, constants::ORDERBOOK_HISTORY_STEPS>>
       yes_buffer_{nullptr};
-  std::vector<OrderbookStoreSnapshot> yes_fetch_buffer_{};
 
   // Market no side
   std::unique_ptr<SeqLockWrapper<OrderbookStoreSnapshot>>
@@ -55,7 +53,6 @@ private:
   std::unique_ptr<
       RingBuffer<OrderbookStoreSnapshot, constants::ORDERBOOK_HISTORY_STEPS>>
       no_buffer_{nullptr};
-  std::vector<OrderbookStoreSnapshot> no_fetch_buffer_{};
 
   uint64_t last_message_seq_{};
 

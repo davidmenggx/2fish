@@ -27,10 +27,7 @@ OrderbookStore::OrderbookStore()
           std::make_unique<RingBuffer<OrderbookStoreSnapshot,
                                       constants::ORDERBOOK_HISTORY_STEPS>>()},
       no_live_snapshot_{
-          std::make_unique<SeqLockWrapper<OrderbookStoreSnapshot>>()} {
-  yes_fetch_buffer_.reserve(constants::ORDERBOOK_HISTORY_STEPS);
-  no_fetch_buffer_.reserve(constants::ORDERBOOK_HISTORY_STEPS);
-}
+          std::make_unique<SeqLockWrapper<OrderbookStoreSnapshot>>()} {}
 
 [[nodiscard]] bool
 OrderbookStore::recordOrderbookMessage(WebsocketMessage &message) {
@@ -211,18 +208,11 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
     if (query_timestamp_ms >= live_snapshot.start_timestamp_ms_)
       return live_snapshot;
 
-    // CRITICAL MAJOR PROBLEM: THIS IS NOT THREAD SAFE
-    yes_fetch_buffer_.clear();
-    yes_buffer_->copy_to(yes_fetch_buffer_);
-
-    auto it = std::upper_bound(
-        yes_fetch_buffer_.begin(), yes_fetch_buffer_.end(), query_timestamp_ms,
+    return yes_buffer_->prev_upper_bound(
+        query_timestamp_ms,
         [](int64_t query, const OrderbookStoreSnapshot &obj) {
           return query < obj.start_timestamp_ms_;
         });
-    if (it == yes_fetch_buffer_.begin())
-      return std::nullopt;
-    return *std::prev(it);
   }
   case Side::No: {
     std::optional<OrderbookStoreSnapshot> earliest_no_message{
@@ -238,18 +228,11 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
     if (query_timestamp_ms >= live_snapshot.start_timestamp_ms_)
       return live_snapshot;
 
-    // CRITICAL MAJOR PROBLEM TODO: THIS IS NOT THREAD SAFE
-    no_fetch_buffer_.clear();
-    no_buffer_->copy_to(no_fetch_buffer_);
-
-    auto it = std::upper_bound(
-        no_fetch_buffer_.begin(), no_fetch_buffer_.end(), query_timestamp_ms,
+    return no_buffer_->prev_upper_bound(
+        query_timestamp_ms,
         [](int64_t query, const OrderbookStoreSnapshot &obj) {
           return query < obj.start_timestamp_ms_;
         });
-    if (it == no_fetch_buffer_.begin())
-      return std::nullopt;
-    return *std::prev(it);
   }
   }
   return std::nullopt;

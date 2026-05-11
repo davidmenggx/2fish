@@ -10,7 +10,6 @@
 #include <stdexcept>
 #include <thread>
 #include <type_traits>
-#include <vector>
 
 template <typename T, std::size_t Capacity> class RingBuffer {
   static_assert(std::is_trivially_copyable_v<T>,
@@ -77,14 +76,17 @@ public:
     return item;
   }
 
-  void copy_to(std::vector<T> &out_vec) const {
-    out_vec.resize(Capacity);
+  template <typename V, typename Compare = std::less<>>
+  [[nodiscard]] std::optional<T> prev_upper_bound(const V &value,
+                                                  Compare comp = {}) const {
+    T item{};
+    bool found{false};
     std::size_t seq0{};
-    std::size_t current_size{0};
     uint64_t spin_count{0};
 
     do {
       seq0 = seq_.load(std::memory_order_acquire);
+
       if (seq0 & 1) {
         if (spin_count < 10) {
           cpuRelax();
@@ -98,16 +100,46 @@ public:
 
       std::size_t current_head{head_.load(std::memory_order_relaxed)};
       std::size_t current_tail{tail_.load(std::memory_order_relaxed)};
-      current_size = current_head - current_tail;
+      std::size_t count{current_head - current_tail};
 
-      for (std::size_t i{0}; i < current_size; ++i) {
-        out_vec[i] = data_[(current_tail + i) & mask_];
+      if (count == 0) {
+        std::atomic_thread_fence(std::memory_order_acquire);
+        if (seq0 != seq_.load(std::memory_order_relaxed))
+          continue;
+        return std::nullopt;
+      }
+
+      std::size_t first{0};
+      std::size_t len{count};
+
+      while (len > 0) {
+        std::size_t half{len >> 1};
+        std::size_t middle{first + half};
+        T mid_val{data_[(current_tail + middle) & mask_]};
+
+        if (comp(value, mid_val)) {
+          len = half;
+        } else {
+          first = middle + 1;
+          len = len - half - 1;
+        }
+      }
+
+      if (first == 0) {
+        found = false;
+      } else {
+        item = data_[(current_tail + first - 1) & mask_];
+        found = true;
       }
 
       std::atomic_thread_fence(std::memory_order_acquire);
+
     } while (seq0 != seq_.load(std::memory_order_relaxed));
 
-    out_vec.resize(current_size);
+    if (found)
+      return item;
+
+    return std::nullopt;
   }
 
 private:
