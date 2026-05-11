@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/core/rest_data_types.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "config.hpp"
 #include "store/candlestick_store.hpp"
@@ -13,6 +14,7 @@
 class Engine {
 public:
   Engine(moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue,
+         moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue,
          Config config, std::atomic<bool> &running);
 
   void start();
@@ -23,6 +25,7 @@ private:
   const Config config_;
 
   moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue_;
+  moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue_;
 
   OrderbookStore orderbook_store_{};
   CandlestickStore candlestick_store_{};

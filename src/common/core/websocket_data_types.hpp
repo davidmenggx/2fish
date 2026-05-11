@@ -2,23 +2,22 @@
 
 #include "types.hpp"
 
-#include <variant>
-
 #include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <variant>
 
-struct OrderbookSnapshotMessage {
+struct OrderbookSnapshotMessageWs {
   std::string market_ticker_{};
   std::string market_id_{};
   std::array<long double, 101> yes_dollars_{};
   std::array<long double, 101> no_dollars_{};
 
-  bool operator==(const OrderbookSnapshotMessage &) const = default;
+  bool operator==(const OrderbookSnapshotMessageWs &) const = default;
 };
 
-struct OrderbookDeltaMessage {
+struct OrderbookDeltaMessageWs {
   std::string market_ticker_{};
   std::string market_id_{};
   int8_t price_cents_{};
@@ -26,10 +25,10 @@ struct OrderbookDeltaMessage {
   Side side_{};
   int64_t timestamp_ms_{};
 
-  bool operator==(const OrderbookDeltaMessage&) const = default;
+  bool operator==(const OrderbookDeltaMessageWs&) const = default;
 };
 
-struct TradeMessage {
+struct TradeMessageWs {
   std::string market_ticker_{};
   std::string trade_id_{}; // TODO: Only keep if we are using a live-trade log
   uint8_t yes_price_cents_{};
@@ -38,7 +37,7 @@ struct TradeMessage {
   Side taker_side_{};
   int64_t timestamp_ms_{};
 
-  bool operator==(const TradeMessage&) const = default;
+  bool operator==(const TradeMessageWs&) const = default;
 };
 
 struct WebsocketMessage {
@@ -47,7 +46,7 @@ struct WebsocketMessage {
   MessageType message_type_{MessageType::Unknown};
   uint64_t sequence_id_{}; // Valid sequence IDs are >= 1
 
-  std::variant<OrderbookSnapshotMessage, OrderbookDeltaMessage, TradeMessage>
+  std::variant<OrderbookSnapshotMessageWs, OrderbookDeltaMessageWs, TradeMessageWs>
       body_;
 };
 

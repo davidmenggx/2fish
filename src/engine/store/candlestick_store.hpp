@@ -24,7 +24,7 @@ public:
   // 1) gets the live candlestick
   // 2) finds the historical candlestick, or start a query
 
-  [[nodiscard]] bool recordTradeMessage(WebsocketMessage &message);
+  [[nodiscard]] bool recordTradeMessageWs(WebsocketMessage &message);
 
   void tryRolloverYesCandlestick(int64_t now_ms);
   void tryRolloverNoCandlestick(int64_t now_ms);
@@ -32,7 +32,7 @@ public:
 private:
   void clearLiveYesCandlestick();
   void clearLiveNoCandlestick();
-  void updateLiveCandlestick(const TradeMessage *message_body);
+  void updateLiveCandlestick(const TradeMessageWs *message_body);
 
   // Market yes side
   // CRITICAL MAJOR TODO: THE LIVE IS NOT THREAD SAFE

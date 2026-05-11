@@ -29,8 +29,8 @@ CandlestickStore::CandlestickStore()
 }
 
 [[nodiscard]] bool
-CandlestickStore::recordTradeMessage(WebsocketMessage &message) {
-  TradeMessage *message_body{std::get_if<TradeMessage>(&message.body_)};
+CandlestickStore::recordTradeMessageWs(WebsocketMessage &message) {
+  TradeMessageWs *message_body{std::get_if<TradeMessageWs>(&message.body_)};
   if (!message_body)
     return true; // Still true here because we didn't miss a message
 
@@ -100,7 +100,7 @@ void CandlestickStore::clearLiveNoCandlestick() {
   no_live_candlestick_->start_timestamp_ms_ = 0;
 }
 
-void CandlestickStore::updateLiveCandlestick(const TradeMessage *message_body) {
+void CandlestickStore::updateLiveCandlestick(const TradeMessageWs *message_body) {
   switch (message_body->taker_side_) {
   case Side::Yes:
     // 255 is a sentinel value after clear

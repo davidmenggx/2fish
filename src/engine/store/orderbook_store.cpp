@@ -1,6 +1,7 @@
 #include "orderbook_store.hpp"
 #include "common/containers/ring_buffer.hpp"
 #include "common/containers/seqlock_wrapper.hpp"
+#include "common/core/rest_data_types.hpp"
 #include "common/core/types.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "common/utils/compute_time_bucket.hpp"
@@ -52,8 +53,8 @@ OrderbookStore::recordOrderbookMessage(WebsocketMessage &message) {
 }
 
 void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
-  OrderbookDeltaMessage *message_body{
-      std::get_if<OrderbookDeltaMessage>(&message.body_)};
+  OrderbookDeltaMessageWs *message_body{
+      std::get_if<OrderbookDeltaMessageWs>(&message.body_)};
   if (!message_body)
     return;
 
@@ -139,8 +140,8 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
 }
 
 void OrderbookStore::recordOrderbookSnapshot(WebsocketMessage &message) {
-  OrderbookSnapshotMessage *message_body{
-      std::get_if<OrderbookSnapshotMessage>(&message.body_)};
+  OrderbookSnapshotMessageWs *message_body{
+      std::get_if<OrderbookSnapshotMessageWs>(&message.body_)};
   if (!message_body)
     return;
 
@@ -238,24 +239,27 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
   return std::nullopt;
 }
 
-void OrderbookStore::patch(std::array<long double, 101> &yes_dollars,
-                           std::array<long double, 101> &no_dollars,
-                           int64_t timestamp_ms) {
-  // WARNING: We may need to ensure only one patch happens at a time
-
+void OrderbookStore::tryPatch(RestMessage &message) {
   if (!invalid_state_.load(std::memory_order_acquire))
     return;
 
+  OrderbookSnapshotMessageRest *message_body{
+      std::get_if<OrderbookSnapshotMessageRest>(&message.body_)};
+  if (!message_body)
+    return;
+
   yes_live_snapshot_->write([&](OrderbookStoreSnapshot &store) {
-    store.dollars_ = std::move(yes_dollars);
-    store.start_timestamp_ms_ = computeTimeBucket(
-        timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+    store.dollars_ = std::move(message_body->yes_dollars_);
+    store.start_timestamp_ms_ =
+        computeTimeBucket(message_body->timestamp_ms_,
+                          constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
   });
 
   no_live_snapshot_->write([&](OrderbookStoreSnapshot &store) {
-    store.dollars_ = std::move(no_dollars);
-    store.start_timestamp_ms_ = computeTimeBucket(
-        timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+    store.dollars_ = std::move(message_body->no_dollars_);
+    store.start_timestamp_ms_ =
+        computeTimeBucket(message_body->timestamp_ms_,
+                          constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
   });
 
   invalid_state_.store(false, std::memory_order_release);

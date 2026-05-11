@@ -2,6 +2,7 @@
 
 #include "common/containers/ring_buffer.hpp"
 #include "common/containers/seqlock_wrapper.hpp"
+#include "common/core/rest_data_types.hpp"
 #include "common/core/types.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "constants.hpp"
@@ -28,10 +29,8 @@ public:
   [[nodiscard]] std::optional<OrderbookStoreSnapshot>
   get(int64_t query_timestamp, Side side);
 
-  // Called by async REST clients to repair internal data state in the event
-  // of a sequence ID mismatch.
-  void patch(std::array<long double, 101> &yes_dollars,
-             std::array<long double, 101> &no_dollars, int64_t timestamp_ms);
+  // Repair internal data state in the event of a sequence ID mismatch.
+  void tryPatch(RestMessage &message);
 
   // TODO^^^^: MAKE SURE THAT HOWEVER WE ARE PATCHING, WE MAKE SURE THAT ONCE
   // WE RESUME THE TIMESTAMPS LINE UP
@@ -41,15 +40,15 @@ private:
   void recordOrderbookSnapshot(WebsocketMessage &message);
 
   // Market yes side
-  std::unique_ptr<SeqLockWrapper<OrderbookStoreSnapshot>>
-      yes_live_snapshot_{nullptr};
+  std::unique_ptr<SeqLockWrapper<OrderbookStoreSnapshot>> yes_live_snapshot_{
+      nullptr};
   std::unique_ptr<
       RingBuffer<OrderbookStoreSnapshot, constants::ORDERBOOK_HISTORY_STEPS>>
       yes_buffer_{nullptr};
 
   // Market no side
-  std::unique_ptr<SeqLockWrapper<OrderbookStoreSnapshot>>
-      no_live_snapshot_{nullptr};
+  std::unique_ptr<SeqLockWrapper<OrderbookStoreSnapshot>> no_live_snapshot_{
+      nullptr};
   std::unique_ptr<
       RingBuffer<OrderbookStoreSnapshot, constants::ORDERBOOK_HISTORY_STEPS>>
       no_buffer_{nullptr};

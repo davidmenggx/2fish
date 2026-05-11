@@ -33,11 +33,11 @@ TEST(WebsocketParserTest, ParsesValidOrderbookSnapshot) {
   EXPECT_EQ(result.sequence_id_, 55);
 
   const auto *result_body =
-      std::get_if<OrderbookSnapshotMessage>(&result.body_);
+      std::get_if<OrderbookSnapshotMessageWs>(&result.body_);
   ASSERT_NE(result_body, nullptr)
-      << "Message body is not an OrderbookSnapshotMessage";
+      << "Message body is not an OrderbookSnapshotMessageWs";
 
-  OrderbookSnapshotMessage expected{};
+  OrderbookSnapshotMessageWs expected{};
   expected.market_ticker_ = "TEST";
   expected.market_id_ = "test-id";
 
@@ -73,11 +73,11 @@ TEST(WebsocketParserTest, ParsesValidOrderbookDelta) {
             WebsocketMessage::MessageType::OrderbookDelta);
   EXPECT_EQ(result.sequence_id_, 66);
 
-  const auto *result_body = std::get_if<OrderbookDeltaMessage>(&result.body_);
+  const auto *result_body = std::get_if<OrderbookDeltaMessageWs>(&result.body_);
   ASSERT_NE(result_body, nullptr)
-      << "Message body is not an OrderbookDeltaMessage";
+      << "Message body is not an OrderbookDeltaMessageWs";
 
-  OrderbookDeltaMessage expected{};
+  OrderbookDeltaMessageWs expected{};
   expected.market_ticker_ = "TEST";
   expected.market_id_ = "test-id";
   expected.price_cents_ = 4;
@@ -108,11 +108,11 @@ TEST(WebsocketParserTest, ParsesValidTrade) {
             WebsocketMessage::MessageType::Trade);
   EXPECT_EQ(result.sequence_id_, 77);
 
-  const auto *result_body = std::get_if<TradeMessage>(&result.body_);
+  const auto *result_body = std::get_if<TradeMessageWs>(&result.body_);
   ASSERT_NE(result_body, nullptr)
-      << "Message body is not an TradeMessage";
+      << "Message body is not an TradeMessageWs";
 
-  TradeMessage expected{};
+  TradeMessageWs expected{};
   expected.trade_id_ = "test-id";
   expected.market_ticker_ = "TEST";
   expected.yes_price_cents_ = 86;

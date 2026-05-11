@@ -18,9 +18,9 @@ WebsocketParser::WebsocketParser(
 
 void WebsocketParser::parseAndPush(simdjson::padded_string_view padded_json) {
   WebsocketMessage message{};
-  OrderbookSnapshotMessage orderbook_snapshot_accumulator{};
-  OrderbookDeltaMessage orderbook_delta_accumulator{};
-  TradeMessage trade_accumulator{};
+  OrderbookSnapshotMessageWs orderbook_snapshot_accumulator{};
+  OrderbookDeltaMessageWs orderbook_delta_accumulator{};
+  TradeMessageWs trade_accumulator{};
 
   try {
     simdjson::ondemand::document doc{parser_.iterate(padded_json)};

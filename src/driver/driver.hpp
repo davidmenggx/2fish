@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/core/rest_data_types.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "config.hpp"
 #include "engine/engine.hpp"
@@ -17,6 +18,7 @@ public:
 
 private:
   moodycamel::ReaderWriterQueue<WebsocketMessage> websocket_queue_{};
+  moodycamel::ReaderWriterQueue<RestMessage> rest_patch_queue_;
 
   std::atomic<bool> running_{ true };
 
