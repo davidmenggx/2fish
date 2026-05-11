@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
+#include <thread>
 
 namespace constants {
 // Market data granularity
@@ -14,6 +14,9 @@ inline constexpr std::size_t CANDLESTICK_HISTORY_STEPS{512};
 
 // Engine settings
 inline constexpr uint64_t ENGINE_DEAD_SPIN{2'048};
+
+// Network settings
+inline constexpr std::size_t REST_THREAD_COUNT{8};
 } // namespace constants
 
 static_assert((constants::ENGINE_DEAD_SPIN &

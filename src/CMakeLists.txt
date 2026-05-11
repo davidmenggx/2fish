@@ -1,7 +1,14 @@
 add_library(3fishCore STATIC
+  common/containers/ring_buffer.hpp
+  common/containers/seqlock_wrapper.hpp
+  common/containers/swmr_map.hpp
+  common/core/rest_data_types.hpp
   common/core/types.hpp
   common/core/websocket_data_types.hpp
+  common/utils/compute_time_bucket.hpp
+  common/utils/cpu_relax.hpp
   config.hpp
+  constants.hpp
   driver/driver.hpp
   driver/driver.cpp
   engine/store/candlestick_store.hpp
@@ -10,8 +17,12 @@ add_library(3fishCore STATIC
   engine/store/orderbook_store.cpp
   engine/engine.hpp
   engine/engine.cpp
-  network/auth/websocket_headers.hpp
-  network/auth/websocket_headers.cpp
+  network/auth/generate_headers.hpp
+  network/auth/generate_headers.cpp
+  network/rest/https_session.hpp
+  network/rest/https_session.cpp
+  network/rest/rest_client.hpp
+  network/rest/rest_client.cpp
   network/websocket/websocket_client.hpp
   network/websocket/websocket_client.cpp
   network/websocket/websocket_parser.hpp

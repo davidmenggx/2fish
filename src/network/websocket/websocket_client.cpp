@@ -1,7 +1,7 @@
 #include "network/websocket/websocket_client.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "config.hpp"
-#include "network/auth/websocket_headers.hpp"
+#include "network/auth/generate_headers.hpp"
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
