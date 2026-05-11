@@ -34,9 +34,8 @@ OrderbookStore::recordOrderbookMessage(WebsocketMessage &message) {
   if (state_patched_.load(std::memory_order_acquire)) {
     last_message_seq_ = message.sequence_id_;
     state_patched_.store(false, std::memory_order_release);
-  }
-  else if (message.sequence_id_ != last_message_seq_ + 1 ||
-      invalid_state_.load(std::memory_order_acquire)) {
+  } else if (message.sequence_id_ != last_message_seq_ + 1 ||
+             invalid_state_.load(std::memory_order_acquire)) {
     last_message_seq_ = message.sequence_id_;
     invalid_state_.store(true, std::memory_order_release);
     return false; // Signify that we have missed a message
@@ -71,9 +70,8 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
     // If this message falls beyond the time interval of the last message,
     // save the last message and start again.
     if (message_body->timestamp_ms_ >
-        ((yes_live_snapshot_->start_timestamp_ms_ /
-          constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
-             constants::ORDERBOOK_HISTORY_GRANULARITY_MS +
+        (computeTimeBucket(yes_live_snapshot_->start_timestamp_ms_,
+                           constants::ORDERBOOK_HISTORY_GRANULARITY_MS) +
          constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
       yes_buffer_->push(*yes_live_snapshot_);
       yes_live_snapshot_->start_timestamp_ms_ = this_message_timestamp_ms;
@@ -85,9 +83,8 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
     // If this message falls beyond the time interval of the last message,
     // save the last message and start again.
     if (message_body->timestamp_ms_ >
-        ((no_live_snapshot_->start_timestamp_ms_ /
-          constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
-             constants::ORDERBOOK_HISTORY_GRANULARITY_MS +
+        (computeTimeBucket(no_live_snapshot_->start_timestamp_ms_,
+                           constants::ORDERBOOK_HISTORY_GRANULARITY_MS) +
          constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
       no_buffer_->push(*no_live_snapshot_);
       no_live_snapshot_->start_timestamp_ms_ =

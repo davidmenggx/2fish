@@ -1,9 +1,13 @@
 #pragma once
 
+#include "common/utils/cpu_relax.hpp"
+
 #include <array>
 #include <atomic>
 #include <bit>
+#include <cstdint>
 #include <optional>
+#include <thread>
 #include <type_traits>
 #include <vector>
 
@@ -31,18 +35,30 @@ public:
   [[nodiscard]] std::optional<T> get(std::size_t index) const {
     T item;
     std::size_t seq0{};
+    uint64_t spin_count{0};
 
     do {
       seq0 = seq_.load(std::memory_order_acquire);
 
       if (seq0 & 1) {
+        if (spin_count < 10) {
+          cpuRelax();
+        } else {
+          std::this_thread::yield();
+        }
         continue;
       }
 
-      std::size_t current_head = head_;
-      std::size_t current_tail = tail_;
+      spin_count = 0;
+
+      std::size_t current_head{head_.load(std::memory_order_relaxed)};
+      std::size_t current_tail{tail_.load(std::memory_order_relaxed)};
 
       if (index >= (current_head - current_tail)) {
+        std::atomic_thread_fence(std::memory_order_acquire);
+        if (seq0 != seq_.load(std::memory_order_relaxed)) {
+          continue;
+        }
         return std::nullopt;
       }
 
@@ -56,39 +72,45 @@ public:
   }
 
   void copy_to(std::vector<T> &out_vec) const {
-    out_vec.reserve(Capacity);
-
+    out_vec.resize(Capacity);
     std::size_t seq0{};
+    std::size_t current_size{0};
+    uint64_t spin_count{0};
 
     do {
       seq0 = seq_.load(std::memory_order_acquire);
-
       if (seq0 & 1) {
+        if (spin_count < 10) {
+          cpuRelax();
+        } else {
+          std::this_thread::yield();
+        }
         continue;
       }
 
-      std::size_t current_head = head_;
-      std::size_t current_tail = tail_;
-      std::size_t current_size = current_head - current_tail;
+      spin_count = 0;
 
-      out_vec.resize(current_size);
+      std::size_t current_head{head_.load(std::memory_order_relaxed)};
+      std::size_t current_tail{tail_.load(std::memory_order_relaxed)};
+      current_size = current_head - current_tail;
 
-      for (std::size_t i = 0; i < current_size; ++i) {
+      for (std::size_t i{0}; i < current_size; ++i) {
         out_vec[i] = data_[(current_tail + i) & mask_];
       }
 
       std::atomic_thread_fence(std::memory_order_acquire);
-
     } while (seq0 != seq_.load(std::memory_order_relaxed));
+
+    out_vec.resize(current_size);
   }
 
 private:
   static constexpr std::size_t mask_{Capacity - 1};
 
-  std::atomic<std::size_t> seq_{0};
+  alignas(64) std::atomic<std::size_t> seq_{0};
 
-  std::array<T, Capacity> data_{};
+  std::atomic<std::size_t> head_{0};
+  std::atomic<std::size_t> tail_{0};
 
-  std::size_t head_{0};
-  std::size_t tail_{0};
+  alignas(64) std::array<T, Capacity> data_{};
 };
