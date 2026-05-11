@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/containers/ring_buffer.hpp"
+#include "common/containers/seqlock_wrapper.hpp"
 #include "common/core/types.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "constants.hpp"
@@ -33,22 +34,24 @@ public:
   void patch(std::array<long double, 101> &yes_dollars,
              std::array<long double, 101> &no_dollars, int64_t timestamp_ms);
 
-private:
-  void clearLiveYesSnapshot();
-  void clearLiveNoSnapshot();
+  // TODO^^^^: MAKE SURE THAT HOWEVER WE ARE PATCHING, WE MAKE SURE THAT ONCE
+  // WE RESUME THE TIMESTAMPS LINE UP
 
+private:
   void recordOrderbookDelta(WebsocketMessage &message);
   void recordOrderbookSnapshot(WebsocketMessage &message);
 
   // Market yes side
-  std::unique_ptr<OrderbookStoreSnapshot> yes_live_snapshot_{nullptr};
+  std::unique_ptr<SeqLockWrapper<OrderbookStoreSnapshot>>
+      yes_live_snapshot_{nullptr};
   std::unique_ptr<
       RingBuffer<OrderbookStoreSnapshot, constants::ORDERBOOK_HISTORY_STEPS>>
       yes_buffer_{nullptr};
   std::vector<OrderbookStoreSnapshot> yes_fetch_buffer_{};
 
   // Market no side
-  std::unique_ptr<OrderbookStoreSnapshot> no_live_snapshot_{nullptr};
+  std::unique_ptr<SeqLockWrapper<OrderbookStoreSnapshot>>
+      no_live_snapshot_{nullptr};
   std::unique_ptr<
       RingBuffer<OrderbookStoreSnapshot, constants::ORDERBOOK_HISTORY_STEPS>>
       no_buffer_{nullptr};

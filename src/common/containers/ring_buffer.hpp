@@ -7,6 +7,7 @@
 #include <bit>
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <thread>
 #include <type_traits>
 #include <vector>
@@ -18,6 +19,10 @@ template <typename T, std::size_t Capacity> class RingBuffer {
 
 public:
   void push(const T &item) {
+    if (writer_lock_.test_and_set(std::memory_order_acquire)) {
+      throw std::logic_error("Violation of single-writer");
+    }
+
     std::size_t seq{seq_.load(std::memory_order_relaxed)};
     seq_.store(seq + 1, std::memory_order_relaxed);
 
@@ -30,6 +35,7 @@ public:
     ++head_;
 
     seq_.store(seq + 2, std::memory_order_release);
+    writer_lock_.clear(std::memory_order_release);
   }
 
   [[nodiscard]] std::optional<T> get(std::size_t index) const {
@@ -113,4 +119,6 @@ private:
   std::atomic<std::size_t> tail_{0};
 
   alignas(64) std::array<T, Capacity> data_{};
+
+  std::atomic_flag writer_lock_ = ATOMIC_FLAG_INIT;
 };

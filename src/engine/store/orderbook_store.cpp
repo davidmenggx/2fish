@@ -1,5 +1,6 @@
 #include "orderbook_store.hpp"
 #include "common/containers/ring_buffer.hpp"
+#include "common/containers/seqlock_wrapper.hpp"
 #include "common/core/types.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "common/utils/compute_time_bucket.hpp"
@@ -20,11 +21,13 @@
 OrderbookStore::OrderbookStore()
     : yes_buffer_{std::make_unique<RingBuffer<
           OrderbookStoreSnapshot, constants::ORDERBOOK_HISTORY_STEPS>>()},
-      yes_live_snapshot_{std::make_unique<OrderbookStoreSnapshot>()},
+      yes_live_snapshot_{
+          std::make_unique<SeqLockWrapper<OrderbookStoreSnapshot>>()},
       no_buffer_{
           std::make_unique<RingBuffer<OrderbookStoreSnapshot,
                                       constants::ORDERBOOK_HISTORY_STEPS>>()},
-      no_live_snapshot_{std::make_unique<OrderbookStoreSnapshot>()} {
+      no_live_snapshot_{
+          std::make_unique<SeqLockWrapper<OrderbookStoreSnapshot>>()} {
   yes_fetch_buffer_.reserve(constants::ORDERBOOK_HISTORY_STEPS);
   no_fetch_buffer_.reserve(constants::ORDERBOOK_HISTORY_STEPS);
 }
@@ -65,62 +68,73 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
        constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
       constants::ORDERBOOK_HISTORY_GRANULARITY_MS;
 
+  // State variables to safely defer exceptions outside the lock
+  bool trigger_critical_error{false};
+  double error_value{0.0};
+  const char *error_side = "";
+
   switch (message_body->side_) {
   case Side::Yes:
-    // If this message falls beyond the time interval of the last message,
-    // save the last message and start again.
-    if (message_body->timestamp_ms_ >
-        (computeTimeBucket(yes_live_snapshot_->start_timestamp_ms_,
-                           constants::ORDERBOOK_HISTORY_GRANULARITY_MS) +
-         constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
-      yes_buffer_->push(*yes_live_snapshot_);
-      yes_live_snapshot_->start_timestamp_ms_ = this_message_timestamp_ms;
-    }
-    yes_live_snapshot_->dollars_[message_body->price_cents_] +=
-        message_body->delta_;
+    yes_live_snapshot_->write([&](OrderbookStoreSnapshot &store) {
+      // If this message falls beyond the time interval of the last message,
+      // save the last message and start again.
+      if (message_body->timestamp_ms_ >
+          (computeTimeBucket(store.start_timestamp_ms_,
+                             constants::ORDERBOOK_HISTORY_GRANULARITY_MS) +
+           constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
+        yes_buffer_->push(store);
+        store.start_timestamp_ms_ = this_message_timestamp_ms;
+      }
+
+      // Apply delta
+      store.dollars_[message_body->price_cents_] += message_body->delta_;
+
+      // Validate and clean up floating point drift
+      if (store.dollars_[message_body->price_cents_] < -0.0001) {
+        trigger_critical_error = true;
+        error_value = store.dollars_[message_body->price_cents_];
+        error_side = "Yes";
+      } else if (std::abs(store.dollars_[message_body->price_cents_]) <
+                 0.0001) {
+        store.dollars_[message_body->price_cents_] = 0.0;
+      }
+    });
     break;
+
   case Side::No:
-    // If this message falls beyond the time interval of the last message,
-    // save the last message and start again.
-    if (message_body->timestamp_ms_ >
-        (computeTimeBucket(no_live_snapshot_->start_timestamp_ms_,
-                           constants::ORDERBOOK_HISTORY_GRANULARITY_MS) +
-         constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
-      no_buffer_->push(*no_live_snapshot_);
-      no_live_snapshot_->start_timestamp_ms_ =
-          (message_body->timestamp_ms_ /
-           constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
-          constants::ORDERBOOK_HISTORY_GRANULARITY_MS;
-    }
-    no_live_snapshot_->dollars_[message_body->price_cents_] +=
-        message_body->delta_;
+    no_live_snapshot_->write([&](OrderbookStoreSnapshot &store) {
+      // If this message falls beyond the time interval of the last message,
+      // save the last message and start again.
+      if (message_body->timestamp_ms_ >
+          (computeTimeBucket(store.start_timestamp_ms_,
+                             constants::ORDERBOOK_HISTORY_GRANULARITY_MS) +
+           constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
+        no_buffer_->push(store);
+        store.start_timestamp_ms_ = this_message_timestamp_ms;
+      }
+
+      // Apply delta
+      store.dollars_[message_body->price_cents_] += message_body->delta_;
+
+      // Validate and clean up floating point drift
+      if (store.dollars_[message_body->price_cents_] < -0.0001) {
+        trigger_critical_error = true;
+        error_value = store.dollars_[message_body->price_cents_];
+        error_side = "No";
+      } else if (std::abs(store.dollars_[message_body->price_cents_]) <
+                 0.0001) {
+        store.dollars_[message_body->price_cents_] = 0.0;
+      }
+    });
     break;
   }
 
-  if (yes_live_snapshot_->dollars_[message_body->price_cents_] < -0.0001) {
+  if (trigger_critical_error) {
     invalid_state_.store(true, std::memory_order_release);
     throw std::logic_error(
-        std::format("CRITICAL: Orderbook volume cannot be negative, Yes market "
+        std::format("CRITICAL: Orderbook volume cannot be negative, {} market "
                     "has value {} at {} cents\n",
-                    yes_live_snapshot_->dollars_[message_body->price_cents_],
-                    message_body->price_cents_));
-  }
-  if (std::abs(yes_live_snapshot_->dollars_[message_body->price_cents_]) <
-      0.0001) {
-    yes_live_snapshot_->dollars_[message_body->price_cents_] = 0.0;
-  }
-
-  if (no_live_snapshot_->dollars_[message_body->price_cents_] < -0.0001) {
-    invalid_state_.store(true, std::memory_order_release);
-    throw std::logic_error(
-        std::format("CRITICAL: Orderbook volume cannot be negative, No market "
-                    "has value {} at {} cents\n",
-                    no_live_snapshot_->dollars_[message_body->price_cents_],
-                    message_body->price_cents_));
-  }
-  if (std::abs(no_live_snapshot_->dollars_[message_body->price_cents_]) <
-      0.0001) {
-    no_live_snapshot_->dollars_[message_body->price_cents_] = 0.0;
+                    error_side, error_value, message_body->price_cents_));
   }
 
   last_valid_timestamp_ms_.store(message_body->timestamp_ms_,
@@ -141,44 +155,37 @@ void OrderbookStore::recordOrderbookSnapshot(WebsocketMessage &message) {
       std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
   int64_t timestamp_ms{static_cast<int64_t>(millis)};
 
-  // If this message falls beyond the time interval of the last message,
-  // save the last message and start again.
-  if (timestamp_ms >
-      (computeTimeBucket(yes_live_snapshot_->start_timestamp_ms_,
-                         constants::ORDERBOOK_HISTORY_GRANULARITY_MS) +
-       constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
-    yes_buffer_->push(*yes_live_snapshot_);
-  }
+  yes_live_snapshot_->write([&](OrderbookStoreSnapshot &store) {
+    if (timestamp_ms >
+        (computeTimeBucket(store.start_timestamp_ms_,
+                           constants::ORDERBOOK_HISTORY_GRANULARITY_MS) +
+         constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
+      yes_buffer_->push(store);
+    }
 
-  if (timestamp_ms >
-      (computeTimeBucket(no_live_snapshot_->start_timestamp_ms_,
-                         constants::CANDLESTICK_HISTORY_GRANULARITY_MS) +
-       constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
-    no_buffer_->push(*no_live_snapshot_);
-  }
+    store.dollars_.fill(0.0);
 
-  // Take snapshots as a ground truth. Clear unconditionally
-  clearLiveYesSnapshot();
-  clearLiveNoSnapshot();
-  yes_live_snapshot_->start_timestamp_ms_ = computeTimeBucket(
-      timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
-  no_live_snapshot_->start_timestamp_ms_ = computeTimeBucket(
-      timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+    store.start_timestamp_ms_ = computeTimeBucket(
+        timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
 
-  yes_live_snapshot_->dollars_ = std::move(message_body->yes_dollars_);
-  no_live_snapshot_->dollars_ = std::move(message_body->no_dollars_);
-}
+    store.dollars_ = std::move(message_body->yes_dollars_);
+  });
 
-void OrderbookStore::clearLiveYesSnapshot() {
-  std::fill(yes_live_snapshot_->dollars_.begin(),
-            yes_live_snapshot_->dollars_.end(), 0.0);
-  yes_live_snapshot_->start_timestamp_ms_ = 0;
-}
+  no_live_snapshot_->write([&](OrderbookStoreSnapshot &store) {
+    if (timestamp_ms >
+        (computeTimeBucket(store.start_timestamp_ms_,
+                           constants::CANDLESTICK_HISTORY_GRANULARITY_MS) +
+         constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
+      no_buffer_->push(store);
+    }
 
-void OrderbookStore::clearLiveNoSnapshot() {
-  std::fill(no_live_snapshot_->dollars_.begin(),
-            no_live_snapshot_->dollars_.end(), 0.0);
-  no_live_snapshot_->start_timestamp_ms_ = 0;
+    store.dollars_.fill(0.0);
+
+    store.start_timestamp_ms_ = computeTimeBucket(
+        timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+
+    store.dollars_ = std::move(message_body->no_dollars_);
+  });
 }
 
 [[nodiscard]] std::optional<OrderbookStoreSnapshot>
@@ -188,6 +195,7 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
           last_valid_timestamp_ms_.load(std::memory_order_acquire)) {
     return std::nullopt;
   }
+
   switch (side) {
   case Side::Yes: {
     std::optional<OrderbookStoreSnapshot> earliest_yes_message{
@@ -195,8 +203,13 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
     if (earliest_yes_message &&
         query_timestamp_ms < earliest_yes_message->start_timestamp_ms_)
       return std::nullopt;
-    if (query_timestamp_ms >= yes_live_snapshot_->start_timestamp_ms_)
-      return *yes_live_snapshot_;
+
+    // Fast lock-free read
+    OrderbookStoreSnapshot live_snapshot = yes_live_snapshot_->read(
+        [](const OrderbookStoreSnapshot &store) { return store; });
+
+    if (query_timestamp_ms >= live_snapshot.start_timestamp_ms_)
+      return live_snapshot;
 
     // CRITICAL MAJOR PROBLEM: THIS IS NOT THREAD SAFE
     yes_fetch_buffer_.clear();
@@ -217,8 +230,13 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
     if (earliest_no_message &&
         query_timestamp_ms < earliest_no_message->start_timestamp_ms_)
       return std::nullopt;
-    if (query_timestamp_ms >= no_live_snapshot_->start_timestamp_ms_)
-      return *no_live_snapshot_;
+
+    // Fast lock-free read
+    OrderbookStoreSnapshot live_snapshot = no_live_snapshot_->read(
+        [](const OrderbookStoreSnapshot &store) { return store; });
+
+    if (query_timestamp_ms >= live_snapshot.start_timestamp_ms_)
+      return live_snapshot;
 
     // CRITICAL MAJOR PROBLEM TODO: THIS IS NOT THREAD SAFE
     no_fetch_buffer_.clear();
@@ -245,13 +263,17 @@ void OrderbookStore::patch(std::array<long double, 101> &yes_dollars,
   if (!invalid_state_.load(std::memory_order_acquire))
     return;
 
-  yes_live_snapshot_->dollars_ = std::move(yes_dollars);
-  yes_live_snapshot_->start_timestamp_ms_ = computeTimeBucket(
-      timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+  yes_live_snapshot_->write([&](OrderbookStoreSnapshot &store) {
+    store.dollars_ = std::move(yes_dollars);
+    store.start_timestamp_ms_ = computeTimeBucket(
+        timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+  });
 
-  no_live_snapshot_->dollars_ = std::move(no_dollars);
-  no_live_snapshot_->start_timestamp_ms_ = computeTimeBucket(
-      timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+  no_live_snapshot_->write([&](OrderbookStoreSnapshot &store) {
+    store.dollars_ = std::move(no_dollars);
+    store.start_timestamp_ms_ = computeTimeBucket(
+        timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+  });
 
   invalid_state_.store(false, std::memory_order_release);
 }

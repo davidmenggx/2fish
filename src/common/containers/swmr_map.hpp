@@ -6,6 +6,7 @@
 #include <optional>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 template <typename Key, typename Value, std::size_t Capacity,
@@ -19,20 +20,20 @@ class SwmrMap {
 
 public:
   SwmrMap() {
-    for (auto &bucket : buckets) {
+    for (auto &bucket : buckets_) {
       bucket.store(nullptr, std::memory_order_relaxed);
     }
-    for (auto &ptr : clock_array) {
+    for (auto &ptr : clock_array_) {
       ptr = nullptr;
     }
   }
 
   ~SwmrMap() {
-    for (std::size_t i{0}; i < current_size; ++i) {
-      delete clock_array[i];
+    for (std::size_t i{0}; i < current_size_; ++i) {
+      delete clock_array_[i];
     }
-    for (auto &retired : retired_list) {
-      delete retired.node;
+    for (auto &retired : retired_list_) {
+      delete retired.node_;
     }
   }
 
@@ -42,140 +43,140 @@ public:
   [[nodiscard]] std::optional<Value> get(const Key &key) {
     std::size_t id{get_thread_id()};
 
-    reader_states[id].active.store(true, std::memory_order_relaxed);
+    reader_states_[id].active_.store(true, std::memory_order_relaxed);
     std::atomic_thread_fence(std::memory_order_seq_cst);
-    reader_states[id].epoch.store(global_epoch.load(std::memory_order_relaxed),
+    reader_states_[id].epoch_.store(global_epoch_.load(std::memory_order_relaxed),
                                   std::memory_order_relaxed);
     std::atomic_thread_fence(std::memory_order_seq_cst);
 
     std::optional<Value> result;
     std::size_t bucket_idx = std::hash<Key>{}(key) % NumBuckets;
 
-    Node *curr{buckets[bucket_idx].load(std::memory_order_acquire)};
+    Node *curr{buckets_[bucket_idx].load(std::memory_order_acquire)};
     while (curr) {
-      if (curr->key == key) {
-        curr->referenced.store(true, std::memory_order_relaxed);
-        result = curr->value;
+      if (curr->key_ == key) {
+        curr->referenced_.store(true, std::memory_order_relaxed);
+        result = curr->value_;
         break;
       }
-      curr = curr->next.load(std::memory_order_acquire);
+      curr = curr->next_.load(std::memory_order_acquire);
     }
 
     std::atomic_thread_fence(std::memory_order_seq_cst);
-    reader_states[id].active.store(false, std::memory_order_release);
+    reader_states_[id].active_.store(false, std::memory_order_release);
 
     return result;
   }
 
   void put(const Key &key, const Value &value) {
-    if (writer_lock.test_and_set(std::memory_order_acquire)) {
+    if (writer_lock_.test_and_set(std::memory_order_acquire)) {
       throw std::logic_error("Violation of single-writer");
     }
 
     std::size_t bucket_idx{std::hash<Key>{}(key) % NumBuckets};
     Node *prev{nullptr};
-    Node *curr{buckets[bucket_idx].load(std::memory_order_relaxed)};
+    Node *curr{buckets_[bucket_idx].load(std::memory_order_relaxed)};
 
     while (curr) {
-      if (curr->key == key) {
-        std::size_t idx{curr->clock_idx};
+      if (curr->key_ == key) {
+        std::size_t idx{curr->clock_idx_};
         Node *new_node{
             new Node(key, value, idx)}; // Retain existing clock index
-        new_node->next.store(curr->next.load(std::memory_order_relaxed),
+        new_node->next_.store(curr->next_.load(std::memory_order_relaxed),
                              std::memory_order_relaxed);
 
         if (prev) {
-          prev->next.store(new_node, std::memory_order_release);
+          prev->next_.store(new_node, std::memory_order_release);
         } else {
-          buckets[bucket_idx].store(new_node, std::memory_order_release);
+          buckets_[bucket_idx].store(new_node, std::memory_order_release);
         }
 
-        clock_array[idx] = new_node;
+        clock_array_[idx] = new_node;
 
-        retired_list.push_back(
-            {curr, global_epoch.load(std::memory_order_relaxed)});
+        retired_list_.push_back(
+            {curr, global_epoch_.load(std::memory_order_relaxed)});
 
         reclaim_memory();
-        writer_lock.clear(std::memory_order_release);
+        writer_lock_.clear(std::memory_order_release);
         return;
       }
       prev = curr;
-      curr = curr->next.load(std::memory_order_relaxed);
+      curr = curr->next_.load(std::memory_order_relaxed);
     }
 
-    if (current_size < Capacity) {
-      Node *new_node{new Node(key, value, current_size)};
-      new_node->next.store(buckets[bucket_idx].load(std::memory_order_relaxed),
+    if (current_size_ < Capacity) {
+      Node *new_node{new Node(key, value, current_size_)};
+      new_node->next_.store(buckets_[bucket_idx].load(std::memory_order_relaxed),
                            std::memory_order_relaxed);
-      buckets[bucket_idx].store(new_node, std::memory_order_release);
-      clock_array[current_size++] = new_node;
+      buckets_[bucket_idx].store(new_node, std::memory_order_release);
+      clock_array_[current_size_++] = new_node;
     } else {
       std::size_t sweep_iterations{0};
 
       // Cap eviction loop to avoid infinite spinning
       while (true) {
-        Node *victim{clock_array[clock_hand]};
+        Node *victim{clock_array_[clock_hand_]};
 
-        if (victim->referenced.load(std::memory_order_relaxed) &&
+        if (victim->referenced_.load(std::memory_order_relaxed) &&
             sweep_iterations < Capacity) {
-          victim->referenced.store(false, std::memory_order_relaxed);
-          clock_hand = (clock_hand + 1) % Capacity;
+          victim->referenced_.store(false, std::memory_order_relaxed);
+          clock_hand_ = (clock_hand_ + 1) % Capacity;
           ++sweep_iterations;
         } else {
-          Node *new_node{new Node(key, value, clock_hand)};
+          Node *new_node{new Node(key, value, clock_hand_)};
           remove_from_hash_table(victim);
 
-          retired_list.push_back(
-              {victim, global_epoch.load(std::memory_order_relaxed)});
+          retired_list_.push_back(
+              {victim, global_epoch_.load(std::memory_order_relaxed)});
 
-          new_node->next.store(
-              buckets[bucket_idx].load(std::memory_order_relaxed),
+          new_node->next_.store(
+              buckets_[bucket_idx].load(std::memory_order_relaxed),
               std::memory_order_relaxed);
-          buckets[bucket_idx].store(new_node, std::memory_order_release);
+          buckets_[bucket_idx].store(new_node, std::memory_order_release);
 
-          clock_array[clock_hand] = new_node;
-          clock_hand = (clock_hand + 1) % Capacity;
+          clock_array_[clock_hand_] = new_node;
+          clock_hand_ = (clock_hand_ + 1) % Capacity;
           break;
         }
       }
     }
 
     reclaim_memory();
-    writer_lock.clear(std::memory_order_release);
+    writer_lock_.clear(std::memory_order_release);
   }
 
 private:
   struct Node {
-    Key key;
-    Value value;
-    std::size_t clock_idx;
-    std::atomic<bool> referenced{true};
-    std::atomic<Node *> next{nullptr};
+    Key key_;
+    Value value_;
+    std::size_t clock_idx_;
+    std::atomic<bool> referenced_{true};
+    std::atomic<Node *> next_{nullptr};
 
     Node(Key k, Value v, std::size_t idx)
-        : key(std::move(k)), value(std::move(v)), clock_idx(idx) {}
+        : key_(std::move(k)), value_(std::move(v)), clock_idx_(idx) {}
   };
 
   // EBR state
   struct ReaderState {
-    alignas(64) std::atomic<bool> active{false};
-    std::atomic<uint64_t> epoch{0};
+    alignas(64) std::atomic<bool> active_{false};
+    std::atomic<uint64_t> epoch_{0};
   };
 
   struct RetiredNode {
-    Node *node;
-    uint64_t epoch;
+    Node *node_;
+    uint64_t epoch_;
   };
 
-  alignas(64) std::array<ReaderState, MaxReaders> reader_states;
-  alignas(64) std::atomic<uint64_t> global_epoch{1};
+  alignas(64) std::array<ReaderState, MaxReaders> reader_states_;
+  alignas(64) std::atomic<uint64_t> global_epoch_{1};
 
-  inline static std::atomic<uint64_t> active_thread_slots{0};
+  inline static std::atomic<uint64_t> active_thread_slots_{0};
 
   struct ThreadRegistry {
-    std::size_t id{};
+    std::size_t id_{};
     ThreadRegistry() {
-      uint64_t current{active_thread_slots.load(std::memory_order_relaxed)};
+      uint64_t current{active_thread_slots_.load(std::memory_order_relaxed)};
       while (true) {
         std::size_t bit{64};
         for (std::size_t i{0}; i < 64; ++i) {
@@ -187,74 +188,74 @@ private:
         if (bit >= MaxReaders)
           throw std::runtime_error("Exceeded maximum concurrent readers");
 
-        if (active_thread_slots.compare_exchange_weak(
+        if (active_thread_slots_.compare_exchange_weak(
                 current, current | (1ULL << bit), std::memory_order_acquire)) {
-          id = bit;
+          id_ = bit;
           break;
         }
       }
     }
     ~ThreadRegistry() {
-      active_thread_slots.fetch_and(~(1ULL << id), std::memory_order_release);
+      active_thread_slots_.fetch_and(~(1ULL << id_), std::memory_order_release);
     }
   };
 
   static std::size_t get_thread_id() {
     thread_local ThreadRegistry registry;
-    return registry.id;
+    return registry.id_;
   }
 
-  std::vector<RetiredNode> retired_list;
+  std::vector<RetiredNode> retired_list_;
 
-  std::array<std::atomic<Node *>, NumBuckets> buckets;
-  std::array<Node *, Capacity> clock_array;
-  std::size_t current_size{0};
-  std::size_t clock_hand{0};
+  std::array<std::atomic<Node *>, NumBuckets> buckets_;
+  std::array<Node *, Capacity> clock_array_;
+  std::size_t current_size_{0};
+  std::size_t clock_hand_{0};
 
-  std::atomic_flag writer_lock = ATOMIC_FLAG_INIT;
+  std::atomic_flag writer_lock_ = ATOMIC_FLAG_INIT;
 
   void remove_from_hash_table(Node *victim) {
-    std::size_t bucket_idx{std::hash<Key>{}(victim->key) % NumBuckets};
+    std::size_t bucket_idx{std::hash<Key>{}(victim->key_) % NumBuckets};
     Node *prev{nullptr};
-    Node *curr{buckets[bucket_idx].load(std::memory_order_relaxed)};
+    Node *curr{buckets_[bucket_idx].load(std::memory_order_relaxed)};
 
     while (curr) {
       if (curr == victim) {
         if (prev) {
-          prev->next.store(curr->next.load(std::memory_order_relaxed),
+          prev->next_.store(curr->next_.load(std::memory_order_relaxed),
                            std::memory_order_release);
         } else {
-          buckets[bucket_idx].store(curr->next.load(std::memory_order_relaxed),
+          buckets_[bucket_idx].store(curr->next_.load(std::memory_order_relaxed),
                                     std::memory_order_release);
         }
         break;
       }
       prev = curr;
-      curr = curr->next.load(std::memory_order_relaxed);
+      curr = curr->next_.load(std::memory_order_relaxed);
     }
   }
 
   void reclaim_memory() {
-    global_epoch.fetch_add(1, std::memory_order_release);
-    uint64_t current_global{global_epoch.load(std::memory_order_acquire)};
+    global_epoch_.fetch_add(1, std::memory_order_release);
+    uint64_t current_global{global_epoch_.load(std::memory_order_acquire)};
     uint64_t min_active_epoch{current_global};
 
     for (std::size_t i{0}; i < MaxReaders; ++i) {
-      if (reader_states[i].active.load(std::memory_order_acquire)) {
+      if (reader_states_[i].active_.load(std::memory_order_acquire)) {
         uint64_t reader_epoch{
-            reader_states[i].epoch.load(std::memory_order_acquire)};
+            reader_states_[i].epoch_.load(std::memory_order_acquire)};
         if (reader_epoch < min_active_epoch) {
           min_active_epoch = reader_epoch;
         }
       }
     }
 
-    for (std::size_t i{0}; i < retired_list.size();) {
-      if (retired_list[i].epoch < min_active_epoch) {
-        delete retired_list[i].node;
+    for (std::size_t i{0}; i < retired_list_.size();) {
+      if (retired_list_[i].epoch_ < min_active_epoch) {
+        delete retired_list_[i].node_;
 
-        retired_list[i] = retired_list.back();
-        retired_list.pop_back();
+        retired_list_[i] = retired_list_.back();
+        retired_list_.pop_back();
       } else {
         ++i;
       }

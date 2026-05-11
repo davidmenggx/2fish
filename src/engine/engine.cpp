@@ -25,6 +25,9 @@ void Engine::run() {
   WebsocketMessage websocket_message;
   uint64_t empty_spin_count{0};
   while (running_.load(std::memory_order_relaxed)) {
+    // TODO: Perhaps add a patch loop here. We should always prioritize patch
+    // over new reads since before the patch goes in, no new data can be written
+
     if (!websocket_queue_.try_dequeue(websocket_message)) {
       ++empty_spin_count;
 
@@ -84,7 +87,6 @@ void Engine::run() {
     }
 
     // Got some data:
-
     switch (websocket_message.message_type_) {
     case WebsocketMessage::MessageType::Unknown:
       // std::cout << "Got an unknown message type\n";
