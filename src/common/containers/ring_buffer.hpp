@@ -14,7 +14,7 @@
 template <typename T, std::size_t Capacity> class RingBuffer {
   static_assert(std::is_trivially_copyable_v<T>,
                 "Type must be trivially copyable");
-  static_assert(std::has_single_bit(Capacity), "Size must be a power of 2");
+  static_assert(std::has_single_bit(Capacity), "Capacity must be a power of 2");
 
 public:
   void push(const T &item) {
