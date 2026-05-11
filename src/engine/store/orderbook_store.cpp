@@ -2,9 +2,12 @@
 #include "common/containers/ring_buffer.hpp"
 #include "common/core/types.hpp"
 #include "common/core/websocket_data_types.hpp"
+#include "common/utils/compute_time_bucket.hpp"
 #include "constants.hpp"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <iterator>
@@ -28,9 +31,14 @@ OrderbookStore::OrderbookStore()
 
 [[nodiscard]] bool
 OrderbookStore::recordOrderbookMessage(WebsocketMessage &message) {
-  if (message.sequence_id_ != last_message_seq_ + 1 || invalid_state_) {
+  if (state_patched_.load(std::memory_order_acquire)) {
     last_message_seq_ = message.sequence_id_;
-    invalid_state_ = true;
+    state_patched_.store(false, std::memory_order_release);
+  }
+  else if (message.sequence_id_ != last_message_seq_ + 1 ||
+      invalid_state_.load(std::memory_order_acquire)) {
+    last_message_seq_ = message.sequence_id_;
+    invalid_state_.store(true, std::memory_order_release);
     return false; // Signify that we have missed a message
   }
 
@@ -93,7 +101,7 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
   }
 
   if (yes_live_snapshot_->dollars_[message_body->price_cents_] < -0.0001) {
-    invalid_state_ = true;
+    invalid_state_.store(true, std::memory_order_release);
     throw std::logic_error(
         std::format("CRITICAL: Orderbook volume cannot be negative, Yes market "
                     "has value {} at {} cents\n",
@@ -106,7 +114,7 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
   }
 
   if (no_live_snapshot_->dollars_[message_body->price_cents_] < -0.0001) {
-    invalid_state_ = true;
+    invalid_state_.store(true, std::memory_order_release);
     throw std::logic_error(
         std::format("CRITICAL: Orderbook volume cannot be negative, No market "
                     "has value {} at {} cents\n",
@@ -118,7 +126,8 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
     no_live_snapshot_->dollars_[message_body->price_cents_] = 0.0;
   }
 
-  last_valid_timestamp_ms_ = message_body->timestamp_ms_;
+  last_valid_timestamp_ms_.store(message_body->timestamp_ms_,
+                                 std::memory_order_release);
 }
 
 void OrderbookStore::recordOrderbookSnapshot(WebsocketMessage &message) {
@@ -137,29 +146,27 @@ void OrderbookStore::recordOrderbookSnapshot(WebsocketMessage &message) {
 
   // If this message falls beyond the time interval of the last message,
   // save the last message and start again.
-  if (timestamp_ms > ((yes_live_snapshot_->start_timestamp_ms_ /
-                       constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
-                          constants::ORDERBOOK_HISTORY_GRANULARITY_MS +
-                      constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
+  if (timestamp_ms >
+      (computeTimeBucket(yes_live_snapshot_->start_timestamp_ms_,
+                         constants::ORDERBOOK_HISTORY_GRANULARITY_MS) +
+       constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
     yes_buffer_->push(*yes_live_snapshot_);
   }
 
-  if (timestamp_ms > ((no_live_snapshot_->start_timestamp_ms_ /
-                       constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
-                          constants::ORDERBOOK_HISTORY_GRANULARITY_MS +
-                      constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
+  if (timestamp_ms >
+      (computeTimeBucket(no_live_snapshot_->start_timestamp_ms_,
+                         constants::CANDLESTICK_HISTORY_GRANULARITY_MS) +
+       constants::ORDERBOOK_HISTORY_GRANULARITY_MS)) {
     no_buffer_->push(*no_live_snapshot_);
   }
 
   // Take snapshots as a ground truth. Clear unconditionally
   clearLiveYesSnapshot();
   clearLiveNoSnapshot();
-  yes_live_snapshot_->start_timestamp_ms_ =
-      (timestamp_ms / constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
-      constants::ORDERBOOK_HISTORY_GRANULARITY_MS;
-  no_live_snapshot_->start_timestamp_ms_ =
-      (timestamp_ms / constants::ORDERBOOK_HISTORY_GRANULARITY_MS) *
-      constants::ORDERBOOK_HISTORY_GRANULARITY_MS;
+  yes_live_snapshot_->start_timestamp_ms_ = computeTimeBucket(
+      timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+  no_live_snapshot_->start_timestamp_ms_ = computeTimeBucket(
+      timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
 
   yes_live_snapshot_->dollars_ = std::move(message_body->yes_dollars_);
   no_live_snapshot_->dollars_ = std::move(message_body->no_dollars_);
@@ -179,7 +186,9 @@ void OrderbookStore::clearLiveNoSnapshot() {
 
 [[nodiscard]] std::optional<OrderbookStoreSnapshot>
 OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
-  if (invalid_state_ && query_timestamp_ms > last_valid_timestamp_ms_) {
+  if (invalid_state_.load(std::memory_order_acquire) &&
+      query_timestamp_ms >
+          last_valid_timestamp_ms_.load(std::memory_order_acquire)) {
     return std::nullopt;
   }
   switch (side) {
@@ -192,6 +201,7 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
     if (query_timestamp_ms >= yes_live_snapshot_->start_timestamp_ms_)
       return *yes_live_snapshot_;
 
+    // CRITICAL MAJOR PROBLEM: THIS IS NOT THREAD SAFE
     yes_fetch_buffer_.clear();
     yes_buffer_->copy_to(yes_fetch_buffer_);
 
@@ -213,6 +223,7 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
     if (query_timestamp_ms >= no_live_snapshot_->start_timestamp_ms_)
       return *no_live_snapshot_;
 
+    // CRITICAL MAJOR PROBLEM TODO: THIS IS NOT THREAD SAFE
     no_fetch_buffer_.clear();
     no_buffer_->copy_to(no_fetch_buffer_);
 
@@ -227,4 +238,23 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
   }
   }
   return std::nullopt;
+}
+
+void OrderbookStore::patch(std::array<long double, 101> &yes_dollars,
+                           std::array<long double, 101> &no_dollars,
+                           int64_t timestamp_ms) {
+  // WARNING: We may need to ensure only one patch happens at a time
+
+  if (!invalid_state_.load(std::memory_order_acquire))
+    return;
+
+  yes_live_snapshot_->dollars_ = std::move(yes_dollars);
+  yes_live_snapshot_->start_timestamp_ms_ = computeTimeBucket(
+      timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+
+  no_live_snapshot_->dollars_ = std::move(no_dollars);
+  no_live_snapshot_->start_timestamp_ms_ = computeTimeBucket(
+      timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+
+  invalid_state_.store(false, std::memory_order_release);
 }

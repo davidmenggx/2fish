@@ -83,7 +83,7 @@ void Engine::run() {
       continue;
     }
 
-    // std::cout << "Got something\n";
+    // Got some data:
 
     switch (websocket_message.message_type_) {
     case WebsocketMessage::MessageType::Unknown:

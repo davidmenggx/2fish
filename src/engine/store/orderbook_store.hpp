@@ -6,6 +6,7 @@
 #include "constants.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -22,8 +23,15 @@ public:
 
   [[nodiscard]] bool recordOrderbookMessage(WebsocketMessage &message);
 
+  // Called by the renderer clients to fetch the data at a specific timestamp,
+  // or none if it does not exist.
   [[nodiscard]] std::optional<OrderbookStoreSnapshot>
   get(int64_t query_timestamp, Side side);
+
+  // Called by async REST clients to repair internal data state in the event
+  // of a sequence ID mismatch.
+  void patch(std::array<long double, 101> &yes_dollars,
+             std::array<long double, 101> &no_dollars, int64_t timestamp_ms);
 
 private:
   void clearLiveYesSnapshot();
@@ -47,6 +55,9 @@ private:
   std::vector<OrderbookStoreSnapshot> no_fetch_buffer_{};
 
   uint64_t last_message_seq_{};
-  bool invalid_state_{false};
-  int64_t last_valid_timestamp_ms_{};
+
+  // Internal state validation
+  std::atomic<bool> invalid_state_{false};
+  std::atomic<int64_t> last_valid_timestamp_ms_{};
+  std::atomic<bool> state_patched_{false};
 };

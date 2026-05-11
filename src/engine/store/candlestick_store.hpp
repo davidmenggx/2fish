@@ -23,7 +23,6 @@ public:
   // TODO: A sophisticated fetcher that either:
   // 1) gets the live candlestick
   // 2) finds the historical candlestick, or start a query
-  // If the client queries mo
 
   [[nodiscard]] bool recordTradeMessage(WebsocketMessage &message);
 
@@ -36,6 +35,7 @@ private:
   void updateLiveCandlestick(const TradeMessage *message_body);
 
   // Market yes side
+  // CRITICAL MAJOR TODO: THE LIVE IS NOT THREAD SAFE
   std::unique_ptr<CandlestickStoreSnapshot> yes_live_candlestick_{nullptr};
   std::unique_ptr<SwmrMap<int64_t, CandlestickStoreSnapshot,
                           constants::CANDLESTICK_HISTORY_STEPS>>

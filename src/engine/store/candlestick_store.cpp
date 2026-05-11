@@ -2,11 +2,12 @@
 #include "common/containers/swmr_map.hpp"
 #include "common/core/types.hpp"
 #include "common/core/websocket_data_types.hpp"
+#include "common/utils/compute_time_bucket.hpp"
 #include "constants.hpp"
 
 #include <algorithm>
-#include <cstdint>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <variant>
 
@@ -46,36 +47,33 @@ CandlestickStore::recordTradeMessage(WebsocketMessage &message) {
     // If this message falls beyond the time interval of the last message,
     // save the last message and start again.
     if (message_body->timestamp_ms_ >
-        ((yes_live_candlestick_->start_timestamp_ms_ /
-          constants::CANDLESTICK_HISTORY_GRANULARITY_MS) *
-             constants::CANDLESTICK_HISTORY_GRANULARITY_MS +
+        (computeTimeBucket(yes_live_candlestick_->start_timestamp_ms_,
+                           constants::CANDLESTICK_HISTORY_GRANULARITY_MS) +
          constants::CANDLESTICK_HISTORY_GRANULARITY_MS)) {
       yes_map_->put((yes_live_candlestick_->start_timestamp_ms_ /
                      constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
                     *yes_live_candlestick_);
       clearLiveYesCandlestick();
       yes_live_candlestick_->start_timestamp_ms_ =
-          (message_body->timestamp_ms_ /
-           constants::CANDLESTICK_HISTORY_GRANULARITY_MS) *
-          constants::CANDLESTICK_HISTORY_GRANULARITY_MS;
+          computeTimeBucket(message_body->timestamp_ms_,
+                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
     }
     break;
   case Side::No:
     // If this message falls beyond the time interval of the last message,
     // save the last message and start again.
     if (message_body->timestamp_ms_ >
-        ((no_live_candlestick_->start_timestamp_ms_ /
-          constants::CANDLESTICK_HISTORY_GRANULARITY_MS) *
-             constants::CANDLESTICK_HISTORY_GRANULARITY_MS +
+        (computeTimeBucket(no_live_candlestick_->start_timestamp_ms_,
+                           constants::CANDLESTICK_HISTORY_GRANULARITY_MS) +
          constants::CANDLESTICK_HISTORY_GRANULARITY_MS)) {
-      no_map_->put((no_live_candlestick_->start_timestamp_ms_ /
-                    constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
-                   *no_live_candlestick_);
+      no_map_->put(
+          computeTimeBucket(no_live_candlestick_->start_timestamp_ms_,
+                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
+          *no_live_candlestick_);
       clearLiveNoCandlestick();
       no_live_candlestick_->start_timestamp_ms_ =
-          (message_body->timestamp_ms_ /
-           constants::CANDLESTICK_HISTORY_GRANULARITY_MS) *
-          constants::CANDLESTICK_HISTORY_GRANULARITY_MS;
+          computeTimeBucket(message_body->timestamp_ms_,
+                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
     }
     break;
   }
@@ -146,9 +144,8 @@ void CandlestickStore::updateLiveCandlestick(const TradeMessage *message_body) {
 }
 
 void CandlestickStore::tryRolloverYesCandlestick(int64_t now_ms) {
-  int64_t target_interval_start_ms =
-      (now_ms / constants::CANDLESTICK_HISTORY_GRANULARITY_MS) *
-      constants::CANDLESTICK_HISTORY_GRANULARITY_MS;
+  int64_t target_interval_start_ms{
+      computeTimeBucket(now_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS)};
 
   while (yes_live_candlestick_->start_timestamp_ms_ <
          target_interval_start_ms) {
@@ -174,9 +171,8 @@ void CandlestickStore::tryRolloverYesCandlestick(int64_t now_ms) {
 }
 
 void CandlestickStore::tryRolloverNoCandlestick(int64_t now_ms) {
-  int64_t target_interval_start_ms =
-      (now_ms / constants::CANDLESTICK_HISTORY_GRANULARITY_MS) *
-      constants::CANDLESTICK_HISTORY_GRANULARITY_MS;
+  int64_t target_interval_start_ms{
+      computeTimeBucket(now_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS)};
 
   while (no_live_candlestick_->start_timestamp_ms_ < target_interval_start_ms) {
 
