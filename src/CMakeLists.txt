@@ -19,10 +19,12 @@ add_library(3fishCore STATIC
   engine/engine.cpp
   network/auth/generate_headers.hpp
   network/auth/generate_headers.cpp
-  network/rest/https_session.hpp
-  network/rest/https_session.cpp
+  network/rest/persistent_connection.hpp
+  network/rest/persistent_connection.cpp
   network/rest/rest_client.hpp
   network/rest/rest_client.cpp
+  network/rest/rest_parser.hpp
+  network/rest/rest_parser.cpp
   network/websocket/websocket_client.hpp
   network/websocket/websocket_client.cpp
   network/websocket/websocket_parser.hpp

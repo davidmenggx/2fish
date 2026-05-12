@@ -10,17 +10,17 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <thread>
-
-#include <cstdlib>
 
 Engine::Engine(moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue,
                moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue,
                Config config, std::atomic<bool> &running)
     : websocket_queue_{websocket_queue}, rest_patch_queue_{rest_patch_queue},
-      config_{config}, running_{running} {}
+      rest_client_{rest_patch_queue}, config_{config}, running_{running} {}
 
 void Engine::start() { thread_ = std::jthread(&Engine::run, this); }
 
@@ -57,7 +57,7 @@ void Engine::run() {
         [[fallthrough]];
       case WebsocketMessage::MessageType::OrderbookDelta:
         if (!orderbook_store_.recordOrderbookMessage(websocket_message)) {
-          // TODO: Handle sequence id mismatch
+          handleOrderbookMismatch();
         }
         break;
       case WebsocketMessage::MessageType::Unknown:
@@ -83,8 +83,8 @@ void Engine::run() {
       candlestick_store_.tryRolloverNoCandlestick(now_ms);
     }
 
-    // TESTING ORDERBOOK FOR NOW:
-
+// TESTING ORDERBOOK FOR NOW:
+#if 0
     auto now = std::chrono::system_clock::now();
     auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                       now.time_since_epoch())
@@ -118,9 +118,28 @@ void Engine::run() {
     }
 
     system("cls");
-
+#endif
     // END TESTING
 
     cpuRelax();
   }
+}
+
+void Engine::handleOrderbookMismatch() {
+  auto now = std::chrono::system_clock::now();
+  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now.time_since_epoch())
+                    .count();
+  // Don't spam the request if one has recently been sent out
+  if ((now_ms - last_orderbook_mismatch_request_) <=
+      constants::REST_MESSAGE_COOLDOWN_MS)
+    return;
+
+  std::string target = "/trade-api/v2/markets/";
+  target += config_.market_ticker_;
+  target += "/orderbook";
+
+  rest_client_.get(target);
+
+  last_orderbook_mismatch_request_ = now_ms;
 }

@@ -19,6 +19,8 @@
 #include <utility>
 #include <variant>
 
+#include <iostream>
+
 OrderbookStore::OrderbookStore()
     : yes_buffer_{std::make_unique<RingBuffer<
           OrderbookStoreSnapshot, constants::ORDERBOOK_HISTORY_STEPS>>()},
@@ -32,6 +34,8 @@ OrderbookStore::OrderbookStore()
 
 [[nodiscard]] bool
 OrderbookStore::recordOrderbookMessage(WebsocketMessage &message) {
+  std::cout << "Message\n";
+
   if (state_patched_.load(std::memory_order_acquire)) {
     last_message_seq_ = message.sequence_id_;
     state_patched_.store(false, std::memory_order_release);
@@ -39,6 +43,7 @@ OrderbookStore::recordOrderbookMessage(WebsocketMessage &message) {
              invalid_state_.load(std::memory_order_acquire)) {
     last_message_seq_ = message.sequence_id_;
     invalid_state_.store(true, std::memory_order_release);
+    std::cerr << "Invalid state triggered\n";
     return false; // Signify that we have missed a message
   }
 
