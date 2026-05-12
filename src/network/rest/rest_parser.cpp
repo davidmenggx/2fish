@@ -5,6 +5,8 @@
 
 #include <simdjson.h>
 
+#include <iostream>
+
 RestParser::RestParser(
     moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue)
     : rest_patch_queue_{rest_patch_queue} {}
@@ -12,7 +14,9 @@ RestParser::RestParser(
 void RestParser::parseAndPush(simdjson::padded_string_view padded_json) {
   RestMessage message{};
 
+  std::cout << "Got: " << padded_json << '\n';
+
   // TODO: Parse out the message here
 
-  rest_patch_queue_.try_emplace(message);
+  // rest_patch_queue_.try_emplace(message);
 }

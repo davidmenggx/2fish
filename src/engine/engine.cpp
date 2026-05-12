@@ -119,7 +119,7 @@ void Engine::run() {
 
     system("cls");
 #endif
-    // END TESTING
+// END TESTING
 
     cpuRelax();
   }
@@ -135,11 +135,13 @@ void Engine::handleOrderbookMismatch() {
       constants::REST_MESSAGE_COOLDOWN_MS)
     return;
 
+  std::string host = "external-api.kalshi.com";
+
   std::string target = "/trade-api/v2/markets/";
   target += config_.market_ticker_;
   target += "/orderbook";
 
-  rest_client_.get(target);
+  rest_client_.get(host, target);
 
   last_orderbook_mismatch_request_ = now_ms;
 }

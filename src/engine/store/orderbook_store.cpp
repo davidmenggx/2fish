@@ -34,7 +34,7 @@ OrderbookStore::OrderbookStore()
 
 [[nodiscard]] bool
 OrderbookStore::recordOrderbookMessage(WebsocketMessage &message) {
-  std::cout << "Message\n";
+  return false; // TESTING
 
   if (state_patched_.load(std::memory_order_acquire)) {
     last_message_seq_ = message.sequence_id_;
