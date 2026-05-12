@@ -14,10 +14,9 @@
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace net = boost::asio;
-namespace ssl = boost::asio::ssl;
 using tcp = boost::asio::ip::tcp;
 
-HttpsSession::HttpsSession(net::io_context &ioc, ssl::context &ctx)
+HttpsSession::HttpsSession(net::io_context &ioc, boost::asio::ssl::context &ctx)
     : resolver_(net::make_strand(ioc)), stream_(net::make_strand(ioc), ctx) {}
 
 void HttpsSession::run(const std::string &host, const std::string &port,
@@ -76,7 +75,7 @@ void HttpsSession::onConnect(beast::error_code ec,
     return fail(ec, "connect");
 
   // SSL
-  stream_.async_handshake(ssl::stream_base::client,
+  stream_.async_handshake(boost::asio::ssl::stream_base::client,
                           beast::bind_front_handler(&HttpsSession::onHandshake,
                                                     shared_from_this()));
 }
@@ -112,7 +111,8 @@ void HttpsSession::onRead(beast::error_code ec, std::size_t bytes_transferred) {
 }
 
 void HttpsSession::onShutdown(beast::error_code ec) {
-  if (ec == net::error::eof || ec == ssl::error::stream_truncated) {
+  if (ec == net::error::eof ||
+      ec == boost::asio::ssl::error::stream_truncated) {
     ec = {};
   }
   if (ec)

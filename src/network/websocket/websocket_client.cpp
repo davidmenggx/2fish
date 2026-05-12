@@ -106,6 +106,8 @@ void WebsocketClient::run() {
     boost::beast::flat_buffer rx_buffer;
     boost::system::error_code error_code;
 
+    // TODO: Ensure the responder is valid to prevent MITM
+
     while (running_.load(std::memory_order_relaxed)) {
       rx_buffer.clear();
 
