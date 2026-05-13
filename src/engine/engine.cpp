@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <format>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -36,7 +37,7 @@ void Engine::run() {
         orderbook_store_.tryPatch(rest_message);
         break;
       case RestMessage::MessageType::Candlestick:
-        // TODO: Do something candlestick here
+        candlestick_store_.tryPatch(rest_message);
         break;
       case RestMessage::MessageType::Unknown:
         break;
@@ -50,7 +51,7 @@ void Engine::run() {
       switch (websocket_message.message_type_) {
       case WebsocketMessage::MessageType::Trade:
         if (!candlestick_store_.recordTradeMessageWs(websocket_message)) {
-          // TODO: Handle sequence id mismatch
+          handleCandlestickStoreMismatch();
         }
         break;
       case WebsocketMessage::MessageType::OrderbookSnapshot:
@@ -96,13 +97,32 @@ void Engine::handleOrderbookMismatch() {
       constants::REST_MESSAGE_COOLDOWN_MS)
     return;
 
+  last_orderbook_mismatch_request_ = now_ms;
+
   std::string host = "external-api.kalshi.com";
 
-  std::string target = "/trade-api/v2/markets/";
-  target += config_.market_ticker_;
-  target += "/orderbook";
+  std::string target =
+      std::format("/trade-api/v2/markets/{}/orderbook", config_.market_ticker_);
 
   rest_client_.get(host, target);
+}
 
-  last_orderbook_mismatch_request_ = now_ms;
+void Engine::handleCandlestickStoreMismatch() {
+  auto now = std::chrono::system_clock::now();
+  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now.time_since_epoch())
+                    .count();
+  // Don't spam the request if one has recently been sent out
+  if ((now_ms - last_candlestick_mismatch_request_) <=
+      constants::REST_MESSAGE_COOLDOWN_MS)
+    return;
+  last_candlestick_mismatch_request_ = now_ms;
+
+  std::string host = "external-api.kalshi.com";
+
+  std::string target =
+      std::format("/trade-api/v2/series/{}/markets/{}/candlesticks",
+                  config_.series_ticker_, config_.market_ticker_);
+
+  rest_client_.get(host, target);
 }

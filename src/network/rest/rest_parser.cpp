@@ -150,6 +150,9 @@ void RestParser::parseAndPush(simdjson::padded_string_view padded_json) {
           }
         }
       }
+      if (key == "candlesticks") {
+        // TODO
+      }
     }
   } catch (const simdjson::simdjson_error &e) {
     std::cerr << "JSON parsing error: " << e.what() << '\n';

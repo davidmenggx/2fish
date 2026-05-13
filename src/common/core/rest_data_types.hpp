@@ -4,9 +4,19 @@
 #include <cstdint>
 #include <limits>
 #include <variant>
+#include <vector>
 
 struct CandlestickMessageRest {
-  // TODO
+  struct Candlestick {
+    int64_t end_period_ts_ms_{};
+    uint8_t open_cents_{};
+    uint8_t high_cents_{};
+    uint8_t low_cents_{};
+    uint8_t close_cents_{};
+  };
+
+  // TODO: Vector here is a bit questionable
+  std::vector<Candlestick> candlesticks_{};
 };
 
 struct OrderbookSnapshotMessageRest {

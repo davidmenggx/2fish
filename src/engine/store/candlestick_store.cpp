@@ -1,6 +1,7 @@
 #include "candlestick_store.hpp"
 #include "common/containers/seqlock_wrapper.hpp"
 #include "common/containers/swmr_map.hpp"
+#include "common/core/rest_data_types.hpp"
 #include "common/core/types.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "common/utils/compute_time_bucket.hpp"
@@ -192,4 +193,25 @@ CandlestickStore::get(int64_t query_timestamp_ms, Side side) {
   }
   }
   return std::nullopt;
+}
+
+void CandlestickStore::tryPatch(RestMessage &message) {
+  if (!invalid_state_.load(std::memory_order_acquire))
+    return;
+
+  CandlestickMessageRest *message_body{
+      std::get_if<CandlestickMessageRest>(&message.body_)};
+  if (!message_body)
+    return;
+
+  // We should iterate through the message body vector and do something
+  for (auto& candlestick : message_body->candlesticks_) {
+    ;
+  }
+
+  // last_valid_timestamp_ms_.store(message_body->timestamp_ms_,
+  //                                std::memory_order_release);
+  invalid_state_.store(false, std::memory_order_release);
+
+  std::cout << "Applied a candlestick patch\n";
 }

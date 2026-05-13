@@ -265,5 +265,5 @@ void OrderbookStore::tryPatch(RestMessage &message) {
                                  std::memory_order_release);
   invalid_state_.store(false, std::memory_order_release);
 
-  std::cout << "Applied a patch\n";
+  std::cout << "Applied an orderbook patch\n";
 }

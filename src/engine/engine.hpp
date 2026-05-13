@@ -25,6 +25,10 @@ private:
   void run();
 
   void handleOrderbookMismatch();
+  int64_t last_orderbook_mismatch_request_{};
+
+  void handleCandlestickStoreMismatch();
+  int64_t last_candlestick_mismatch_request_{};
 
   const Config config_;
 
@@ -35,7 +39,6 @@ private:
   CandlestickStore candlestick_store_{};
 
   RestClient rest_client_;
-  int64_t last_orderbook_mismatch_request_{};
 
   std::atomic<bool> &running_;
   std::jthread thread_;
