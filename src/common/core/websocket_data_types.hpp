@@ -22,7 +22,7 @@ struct OrderbookDeltaMessageWs {
   std::string market_id_{};
   int8_t price_cents_{};
   long double delta_{};
-  Side side_{};
+  Side side_{Side::Unknown};
   int64_t timestamp_ms_{};
 
   bool operator==(const OrderbookDeltaMessageWs&) const = default;
@@ -34,7 +34,7 @@ struct TradeMessageWs {
   uint8_t yes_price_cents_{};
   uint8_t no_price_cents_{};
   double contracts_traded_{}; // The "count_fp" field
-  Side taker_side_{};
+  Side taker_side_{Side::Unknown};
   int64_t timestamp_ms_{};
 
   bool operator==(const TradeMessageWs&) const = default;

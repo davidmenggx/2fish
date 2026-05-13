@@ -14,6 +14,11 @@ public:
   void parseAndPush(simdjson::padded_string_view padded_json);
 
 private:
+  OrderbookSnapshotMessageWs
+  parseOrderbookSnapshot(simdjson::ondemand::object &msg);
+  OrderbookDeltaMessageWs parseOrderbookDelta(simdjson::ondemand::object &msg);
+  TradeMessageWs parseTrade(simdjson::ondemand::object &msg);
+
   simdjson::ondemand::parser parser_{};
   moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue_;
 };

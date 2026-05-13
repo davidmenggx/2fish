@@ -127,6 +127,9 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
       }
     });
     break;
+  case Side::Unknown:
+    // TODO: Think about what to do here
+    break;
   }
 
   if (trigger_critical_error) {
@@ -234,6 +237,9 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
           return query < obj.start_timestamp_ms_;
         });
   }
+  case Side::Unknown:
+    // TODO: Think about what to do here
+    break;
   }
   return std::nullopt;
 }

@@ -96,6 +96,9 @@ CandlestickStore::recordTradeMessageWs(WebsocketMessage &message) {
       store.close_ = message_body->no_price_cents_;
     });
     break;
+  case Side::Unknown:
+    // TODO: Think about what to do here
+    break;
   }
   return true;
 }
@@ -191,6 +194,9 @@ CandlestickStore::get(int64_t query_timestamp_ms, Side side) {
         query_timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS));
     break;
   }
+  case Side::Unknown:
+    // TODO: Think about what to do here
+    break;
   }
   return std::nullopt;
 }
@@ -205,7 +211,7 @@ void CandlestickStore::tryPatch(RestMessage &message) {
     return;
 
   // We should iterate through the message body vector and do something
-  for (auto& candlestick : message_body->candlesticks_) {
+  for (auto &candlestick : message_body->candlesticks_) {
     ;
   }
 
