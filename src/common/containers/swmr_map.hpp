@@ -50,7 +50,7 @@ public:
     std::atomic_thread_fence(std::memory_order_seq_cst);
 
     std::optional<Value> result;
-    std::size_t bucket_idx = std::hash<Key>{}(key) % NumBuckets;
+    std::size_t bucket_idx{std::hash<Key>{}(key) % NumBuckets};
 
     Node *curr{buckets_[bucket_idx].load(std::memory_order_acquire)};
     while (curr) {
@@ -76,7 +76,6 @@ public:
     std::size_t bucket_idx{std::hash<Key>{}(key) % NumBuckets};
     Node *prev{nullptr};
     Node *curr{buckets_[bucket_idx].load(std::memory_order_relaxed)};
-
     while (curr) {
       if (curr->key_ == key) {
         std::size_t idx{curr->clock_idx_};

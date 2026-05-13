@@ -41,7 +41,6 @@ OrderbookStore::recordOrderbookMessage(WebsocketMessage &message) {
              invalid_state_.load(std::memory_order_acquire)) {
     last_message_seq_ = message.sequence_id_;
     invalid_state_.store(true, std::memory_order_release);
-    std::cerr << "Invalid state triggered\n";
     return false; // Signify that we have missed a message
   }
 
@@ -132,10 +131,6 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
 
   if (trigger_critical_error) {
     invalid_state_.store(true, std::memory_order_release);
-    throw std::logic_error(
-        std::format("CRITICAL: Orderbook volume cannot be negative, {} market "
-                    "has value {} at {} cents\n",
-                    error_side, error_value, message_body->price_cents_));
   }
 
   last_valid_timestamp_ms_.store(message_body->timestamp_ms_,
@@ -205,6 +200,7 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
         query_timestamp_ms < earliest_yes_message->start_timestamp_ms_)
       return std::nullopt;
 
+    // TODO: Perhaps cache this timestamp instead of fetching it from the data
     // Fast lock-free read
     OrderbookStoreSnapshot live_snapshot = yes_live_snapshot_->read(
         [](const OrderbookStoreSnapshot &store) { return store; });

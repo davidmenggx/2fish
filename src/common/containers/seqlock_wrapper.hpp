@@ -3,6 +3,7 @@
 #include "common/utils/cpu_relax.hpp"
 
 #include <atomic>
+#include <stdexcept>
 #include <thread>
 #include <type_traits>
 

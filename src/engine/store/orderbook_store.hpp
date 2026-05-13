@@ -27,7 +27,7 @@ public:
   // Called by the renderer clients to fetch the data at a specific timestamp,
   // or none if it does not exist.
   [[nodiscard]] std::optional<OrderbookStoreSnapshot>
-  get(int64_t query_timestamp, Side side);
+  get(int64_t query_timestamp_ms, Side side);
 
   // Repair internal data state in the event of a sequence ID mismatch.
   void tryPatch(RestMessage &message);
