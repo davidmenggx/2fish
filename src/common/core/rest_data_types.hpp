@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <variant>
 
 struct CandlestickMessageRest {
@@ -11,7 +12,7 @@ struct CandlestickMessageRest {
 struct OrderbookSnapshotMessageRest {
   std::array<long double, 101> yes_dollars_{};
   std::array<long double, 101> no_dollars_{};
-  int64_t timestamp_ms_{};
+  int64_t timestamp_ms_{std::numeric_limits<int64_t>::min()};
 };
 
 struct RestMessage {

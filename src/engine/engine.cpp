@@ -83,8 +83,7 @@ void Engine::run() {
       candlestick_store_.tryRolloverNoCandlestick(now_ms);
     }
 
-// TESTING ORDERBOOK FOR NOW:
-#if 0
+    // TESTING ORDERBOOK FOR NOW:
     auto now = std::chrono::system_clock::now();
     auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                       now.time_since_epoch())
@@ -118,8 +117,7 @@ void Engine::run() {
     }
 
     system("cls");
-#endif
-// END TESTING
+    // END TESTING
 
     cpuRelax();
   }

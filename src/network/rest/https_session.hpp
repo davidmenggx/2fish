@@ -4,12 +4,15 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/ssl.hpp>
+
+#include <functional>
 #include <memory>
 #include <string>
 
 class HttpsSession : public std::enable_shared_from_this<HttpsSession> {
 public:
-  HttpsSession(boost::asio::io_context &ioc, boost::asio::ssl::context &ctx);
+  HttpsSession(boost::asio::io_context &ioc, boost::asio::ssl::context &ctx,
+               std::function<void(unsigned int, std::string)> callback);
 
   void run(const std::string &host, const std::string &port,
            const std::string &target, int version = 11);
@@ -30,4 +33,5 @@ private:
   boost::beast::flat_buffer buffer_;
   boost::beast::http::request<boost::beast::http::empty_body> req_;
   boost::beast::http::response<boost::beast::http::string_body> res_;
+  std::function<void(unsigned int, std::string)> callback_;
 };

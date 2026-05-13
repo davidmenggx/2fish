@@ -7,7 +7,7 @@
 
 int main() {
   Config config{};
-  config.market_ticker_ = "KXNBA-26-SAS";
+  config.market_ticker_ = "KXNBAGAME-26MAY12MINSAS-SAS";
 
   Driver driver{config};
   try {

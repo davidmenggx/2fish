@@ -5,6 +5,8 @@
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 
+#include <simdjson.h>
+
 #include <cstdlib>
 #include <format>
 #include <memory>
@@ -58,7 +60,13 @@ RestClient::~RestClient() {
 }
 
 void RestClient::get(const std::string &host, const std::string &target) {
-  // I would like to pass in a lambda to send to the parser to parse and push
+  auto handle_response = [this](unsigned int status, std::string body) {
+    if (status == 200) {
+      // TODO: Try to avoid this allocation
+      parser_.parseAndPush(simdjson::padded_string(body.data(), body.size()));
+    }
+  };
 
-  std::make_shared<HttpsSession>(ioc_, ctx_)->run(host, "443", target);
+  std::make_shared<HttpsSession>(ioc_, ctx_, handle_response)
+      ->run(host, "443", target);
 }

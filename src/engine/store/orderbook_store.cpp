@@ -34,8 +34,6 @@ OrderbookStore::OrderbookStore()
 
 [[nodiscard]] bool
 OrderbookStore::recordOrderbookMessage(WebsocketMessage &message) {
-  return false; // TESTING
-
   if (state_patched_.load(std::memory_order_acquire)) {
     last_message_seq_ = message.sequence_id_;
     state_patched_.store(false, std::memory_order_release);
@@ -267,5 +265,9 @@ void OrderbookStore::tryPatch(RestMessage &message) {
                           constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
   });
 
+  last_valid_timestamp_ms_.store(message_body->timestamp_ms_,
+                                 std::memory_order_release);
   invalid_state_.store(false, std::memory_order_release);
+
+  std::cout << "Applied a patch\n";
 }

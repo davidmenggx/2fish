@@ -7,17 +7,22 @@
 #include <boost/beast/ssl.hpp>
 
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace net = boost::asio;
 using tcp = boost::asio::ip::tcp;
 
-HttpsSession::HttpsSession(net::io_context &ioc, boost::asio::ssl::context &ctx)
-    : resolver_(net::make_strand(ioc)), stream_(net::make_strand(ioc), ctx) {}
+HttpsSession::HttpsSession(
+    net::io_context &ioc, boost::asio::ssl::context &ctx,
+    std::function<void(unsigned int, std::string)> callback)
+    : resolver_(net::make_strand(ioc)), stream_(net::make_strand(ioc), ctx),
+      callback_{std::move(callback)} {}
 
 void HttpsSession::run(const std::string &host, const std::string &port,
                        const std::string &target, int version) {
@@ -104,7 +109,8 @@ void HttpsSession::onRead(beast::error_code ec, std::size_t bytes_transferred) {
   if (ec)
     return fail(ec, "read");
 
-  std::cout << res_ << '\n';
+  if (callback_)
+    callback_(res_.result_int(), res_.body());
 
   stream_.async_shutdown(
       beast::bind_front_handler(&HttpsSession::onShutdown, shared_from_this()));
