@@ -2,10 +2,14 @@
 
 #include "common/containers/seqlock_wrapper.hpp"
 #include "common/containers/swmr_map.hpp"
+#include "common/core/rest_data_types.hpp"
 #include "common/core/types.hpp"
 #include "common/core/websocket_data_types.hpp"
-#include "common/core/rest_data_types.hpp"
+#include "config.hpp"
 #include "constants.hpp"
+#include "network/rest/rest_client.hpp"
+
+#include "moodycamel/readerwriterqueue.h"
 
 #include <atomic>
 #include <cstdint>
@@ -23,11 +27,8 @@ struct CandlestickStoreSnapshot {
 
 class CandlestickStore {
 public:
-  CandlestickStore();
-
-  // TODO: A sophisticated fetcher that either:
-  // 1) gets the live candlestick
-  // 2) finds the historical candlestick, or start a query
+  CandlestickStore(moodycamel::ReaderWriterQueue<RestMessage> &rest_query_queue,
+                   Config config);
 
   [[nodiscard]] bool recordTradeMessageWs(WebsocketMessage &message);
 
@@ -39,10 +40,18 @@ public:
   // Repair internal data state in the event of a sequence ID mismatch.
   void tryPatch(RestMessage &message);
 
-  void tryRolloverYesCandlestick(int64_t now_ms);
-  void tryRolloverNoCandlestick(int64_t now_ms);
+  // After fetching a historical candlestick, store it
+  void tryStoreHistorical(RestMessage &message);
+
+  [[nodiscard]] int64_t getLastValidTimestampMs() {
+    return last_valid_timestamp_ms_.load(std::memory_order_acquire);
+  }
+
+  void tryRolloverCandlestick(int64_t now_ms, Side side);
 
 private:
+  void tryFetchHistoricalCandlestick(int64_t query_timestamp_ms, Side side);
+
   // Market yes side
   std::unique_ptr<SeqLockWrapper<CandlestickStoreSnapshot>>
       yes_live_candlestick_{nullptr};
@@ -61,6 +70,17 @@ private:
 
   // Internal state validation
   std::atomic<bool> invalid_state_{false};
-  std::atomic<int64_t> last_valid_timestamp_ms_{};
+  std::atomic<int64_t>
+      last_valid_timestamp_ms_{}; // We may need one of these for each side of
+                                  // the market
   std::atomic<bool> state_patched_{false};
+
+  // Maps a query timestamp (ms) to the last time we sent a request for this
+  // timestamp, to avoid spamming the API endpoint
+  std::unique_ptr<
+      SwmrMap<int64_t, int64_t, constants::PAST_MESSAGE_LOOKUP_SIZE>>
+      candlestick_fetch_history_{nullptr};
+  RestClient rest_client_;
+
+  const Config config_;
 };

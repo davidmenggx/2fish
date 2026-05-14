@@ -15,8 +15,8 @@
 #include <string_view>
 
 RestParser::RestParser(
-    moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue)
-    : rest_patch_queue_{rest_patch_queue} {}
+    moodycamel::ReaderWriterQueue<RestMessage> &output_data_queue)
+    : output_data_queue_{output_data_queue} {}
 
 void RestParser::parseAndPush(simdjson::padded_string_view padded_json) {
   RestMessage message{};
@@ -26,6 +26,7 @@ void RestParser::parseAndPush(simdjson::padded_string_view padded_json) {
   CandlestickMessageRest candlestick_accumulator{};
 
   try {
+    thread_local simdjson::ondemand::parser parser_;
     simdjson::ondemand::document doc = parser_.iterate(padded_json);
 
     for (auto field : doc.get_object()) {
@@ -135,5 +136,5 @@ void RestParser::parseAndPush(simdjson::padded_string_view padded_json) {
     break;
   }
 
-  rest_patch_queue_.try_emplace(message);
+  output_data_queue_.try_emplace(message);
 }

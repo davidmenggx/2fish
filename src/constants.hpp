@@ -18,6 +18,7 @@ inline constexpr uint64_t ENGINE_DEAD_SPIN{2'048};
 // Network settings
 inline constexpr std::size_t REST_THREAD_COUNT{16};
 inline constexpr int64_t REST_MESSAGE_COOLDOWN_MS{2'500};
+inline constexpr std::size_t PAST_MESSAGE_LOOKUP_SIZE{1'024};
 } // namespace constants
 
 static_assert((constants::ENGINE_DEAD_SPIN &

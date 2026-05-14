@@ -20,7 +20,7 @@ namespace ssl = boost::asio::ssl;
 class RestClient {
 public:
   explicit RestClient(
-      moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue,
+      moodycamel::ReaderWriterQueue<RestMessage> &output_data_queue,
       std::size_t thread_count = constants::REST_THREAD_COUNT);
   ~RestClient();
 

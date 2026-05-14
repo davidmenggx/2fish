@@ -21,9 +21,9 @@ namespace ssl = boost::asio::ssl;
 using tcp = boost::asio::ip::tcp;
 
 RestClient::RestClient(
-    moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue,
+    moodycamel::ReaderWriterQueue<RestMessage> &output_data_queue,
     std::size_t thread_count)
-    : parser_{rest_patch_queue}, ctx_(ssl::context::tlsv12_client),
+    : parser_{output_data_queue}, ctx_(ssl::context::tlsv12_client),
       work_guard_(net::make_work_guard(ioc_)) {
   boost::system::error_code default_ec;
   ctx_.set_default_verify_paths(default_ec);

@@ -16,7 +16,6 @@
 class Engine {
 public:
   Engine(moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue,
-         moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue,
          Config config, std::atomic<bool> &running);
 
   void start();
@@ -33,10 +32,11 @@ private:
   const Config config_;
 
   moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue_;
-  moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue_;
+  moodycamel::ReaderWriterQueue<RestMessage> rest_patch_queue_;
+  moodycamel::ReaderWriterQueue<RestMessage> rest_query_queue_; 
 
   OrderbookStore orderbook_store_{};
-  CandlestickStore candlestick_store_{};
+  CandlestickStore candlestick_store_;
 
   RestClient rest_client_;
 

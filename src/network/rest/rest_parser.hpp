@@ -8,11 +8,10 @@
 
 class RestParser {
 public:
-  RestParser(moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue);
+  RestParser(moodycamel::ReaderWriterQueue<RestMessage> &output_data_queue);
 
   void parseAndPush(simdjson::padded_string_view padded_json);
 
 private:
-  simdjson::ondemand::parser parser_{};
-  moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue_;
+  moodycamel::ReaderWriterQueue<RestMessage> &output_data_queue_;
 };

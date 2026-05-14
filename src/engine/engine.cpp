@@ -1,6 +1,7 @@
 #include "engine.hpp"
 #include "common/core/rest_data_types.hpp"
 #include "common/core/websocket_data_types.hpp"
+#include "common/utils/compute_time_bucket.hpp"
 #include "common/utils/cpu_relax.hpp"
 #include "common/utils/set_query_params.hpp"
 #include "config.hpp"
@@ -20,35 +21,36 @@
 #include <utility>
 
 Engine::Engine(moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue,
-               moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue,
                Config config, std::atomic<bool> &running)
-    : websocket_queue_{websocket_queue}, rest_patch_queue_{rest_patch_queue},
-      rest_client_{rest_patch_queue}, config_{config}, running_{running} {}
+    : websocket_queue_{websocket_queue},
+      candlestick_store_{rest_query_queue_, config},
+      rest_client_{rest_patch_queue_}, config_{config}, running_{running} {}
 
 void Engine::start() { thread_ = std::jthread(&Engine::run, this); }
 
 void Engine::run() {
   WebsocketMessage websocket_message;
-  RestMessage rest_message;
+  RestMessage rest_patch_message;
+  RestMessage rest_query_message;
   uint64_t empty_spin_count{0};
   while (running_.load(std::memory_order_relaxed)) {
     // Fixing any failed states takes priority over reading new data
-    if (rest_patch_queue_.try_dequeue(rest_message)) {
-      switch (rest_message.message_type_) {
+    if (rest_patch_queue_.try_dequeue(rest_patch_message)) {
+      switch (rest_patch_message.message_type_) {
       case RestMessage::MessageType::OrderbookSnapshot:
-        orderbook_store_.tryPatch(rest_message);
+        orderbook_store_.tryPatch(rest_patch_message);
         break;
       case RestMessage::MessageType::Candlestick:
-        candlestick_store_.tryPatch(rest_message);
+        candlestick_store_.tryPatch(rest_patch_message);
         break;
       case RestMessage::MessageType::Unknown:
         break;
       }
-
       empty_spin_count = 0;
       continue;
     }
 
+    // Next prioritize live data
     if (websocket_queue_.try_dequeue(websocket_message)) {
       switch (websocket_message.message_type_) {
       case WebsocketMessage::MessageType::Trade:
@@ -66,10 +68,62 @@ void Engine::run() {
       case WebsocketMessage::MessageType::Unknown:
         break;
       }
-
       empty_spin_count = 0;
-      continue;
     }
+
+    // Finally fill in historical data, if any
+    if (rest_query_queue_.try_dequeue(rest_query_message)) {
+      std::cout << "Filling historical\n";
+      switch (rest_query_message.message_type_) {
+      case RestMessage::MessageType::Candlestick:
+        candlestick_store_.tryStoreHistorical(rest_query_message);
+        break;
+      // Not implemented VV
+      case RestMessage::MessageType::OrderbookSnapshot:
+      case RestMessage::MessageType::Unknown:
+        break;
+      }
+      empty_spin_count = 0;
+    }
+
+    // TESTING START
+
+    auto now = std::chrono::system_clock::now();
+    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      now.time_since_epoch())
+                      .count();
+    std::optional<CandlestickStoreSnapshot> result{
+        candlestick_store_.get(now_ms, Side::Yes)};
+
+    std::cout << "Live feed:" << std::endl;
+    if (!result) {
+      std::cout << "No data found or invalid state" << std::endl;
+    } else {
+      std::cout << "Got data:" << std::endl;
+      std::cout << "Timestamp: " << result->start_timestamp_ms_ << std::endl;
+      std::cout << "Open: " << +result->open_ << ". High: " << +result->high_
+                << ". Low: " << +result->low_ << ". Close: " << +result->close_
+                << "\n\n";
+    }
+
+    std::optional<CandlestickStoreSnapshot> trailing_result{
+        candlestick_store_.get(now_ms - 120'000, Side::Yes)};
+    std::cout << "\n\nTrailing 2m:" << std::endl;
+    if (!trailing_result) {
+      std::cout << "No data found or invalid state" << std::endl;
+    } else {
+      std::cout << "Got data:" << std::endl;
+      std::cout << "Timestamp: " << trailing_result->start_timestamp_ms_
+                << std::endl;
+      std::cout << "Open: " << +trailing_result->open_
+                << ". High: " << +trailing_result->high_
+                << ". Low: " << +trailing_result->low_
+                << ". Close: " << +trailing_result->close_ << "\n\n";
+    }
+
+    system("cls");
+
+    // TESTING END
 
     ++empty_spin_count;
 
@@ -82,8 +136,8 @@ void Engine::run() {
       auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                         now.time_since_epoch())
                         .count();
-      candlestick_store_.tryRolloverYesCandlestick(now_ms);
-      candlestick_store_.tryRolloverNoCandlestick(now_ms);
+      candlestick_store_.tryRolloverCandlestick(now_ms, Side::Yes);
+      candlestick_store_.tryRolloverCandlestick(now_ms, Side::No);
     }
     cpuRelax();
   }
@@ -126,12 +180,13 @@ void Engine::handleCandlestickStoreMismatch() {
       std::format("/trade-api/v2/series/{}/markets/{}/candlesticks",
                   config_.series_ticker_, config_.market_ticker_);
 
-  // TODO: Perhaps a better way of computing these timestamps
   auto now_s =
       std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch())
           .count();
-  auto query_start_ts_s{now_s -
-                        (constants::CANDLESTICK_HISTORY_GRANULARITY_MS / 1000)};
+  auto query_start_ts_s{
+      computeTimeBucket(candlestick_store_.getLastValidTimestampMs(),
+                        constants::CANDLESTICK_HISTORY_GRANULARITY_MS) /
+      1000};
 
   setQueryParams(target, std::make_pair("start_ts", query_start_ts_s),
                  std::make_pair("end_ts", now_s),
