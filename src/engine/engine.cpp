@@ -106,19 +106,34 @@ void Engine::run() {
                 << "\n\n";
     }
 
-    std::optional<CandlestickStoreSnapshot> trailing_result{
-        candlestick_store_.get(now_ms - 120'000, Side::Yes)};
-    std::cout << "\n\nTrailing 2m:" << std::endl;
-    if (!trailing_result) {
+    std::optional<CandlestickStoreSnapshot> trailing_1m_result{
+        candlestick_store_.get(now_ms - 60'000, Side::Yes)};
+    std::cout << "\n\nTrailing 1m:" << std::endl;
+    if (!trailing_1m_result) {
       std::cout << "No data found or invalid state" << std::endl;
     } else {
       std::cout << "Got data:" << std::endl;
-      std::cout << "Timestamp: " << trailing_result->start_timestamp_ms_
+      std::cout << "Timestamp: " << trailing_1m_result->start_timestamp_ms_
                 << std::endl;
-      std::cout << "Open: " << +trailing_result->open_
-                << ". High: " << +trailing_result->high_
-                << ". Low: " << +trailing_result->low_
-                << ". Close: " << +trailing_result->close_ << "\n\n";
+      std::cout << "Open: " << +trailing_1m_result->open_
+                << ". High: " << +trailing_1m_result->high_
+                << ". Low: " << +trailing_1m_result->low_
+                << ". Close: " << +trailing_1m_result->close_ << "\n\n";
+    }
+
+    std::optional<CandlestickStoreSnapshot> trailing_2m_result{
+        candlestick_store_.get(now_ms - 120'000, Side::Yes)};
+    std::cout << "\n\nTrailing 2m:" << std::endl;
+    if (!trailing_2m_result) {
+      std::cout << "No data found or invalid state" << std::endl;
+    } else {
+      std::cout << "Got data:" << std::endl;
+      std::cout << "Timestamp: " << trailing_2m_result->start_timestamp_ms_
+                << std::endl;
+      std::cout << "Open: " << +trailing_2m_result->open_
+                << ". High: " << +trailing_2m_result->high_
+                << ". Low: " << +trailing_2m_result->low_
+                << ". Close: " << +trailing_2m_result->close_ << "\n\n";
     }
 
     system("cls");
@@ -136,8 +151,7 @@ void Engine::run() {
       auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                         now.time_since_epoch())
                         .count();
-      candlestick_store_.tryRolloverCandlestick(now_ms, Side::Yes);
-      candlestick_store_.tryRolloverCandlestick(now_ms, Side::No);
+      candlestick_store_.tryRolloverCandlesticks(now_ms);
     }
     cpuRelax();
   }

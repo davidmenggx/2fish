@@ -105,72 +105,61 @@ CandlestickStore::recordTradeMessageWs(WebsocketMessage &message) {
     // TODO: Think about what to do here
     break;
   }
-
-  tryRolloverCandlestick(message_body->timestamp_ms_,
-                         message_body->taker_side_);
+  tryRolloverCandlesticks(message_body->timestamp_ms_);
   return true;
 }
 
-void CandlestickStore::tryRolloverCandlestick(int64_t now_ms, Side side) {
+void CandlestickStore::tryRolloverCandlesticks(int64_t now_ms) {
   // TODO: We really should cache the start timestamp of the live candle,
   // I think this constant write is causing some contention.
   int64_t target_interval_start_ms{
       computeTimeBucket(now_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS)};
-  switch (side) {
-  case Side::Yes: {
-    yes_live_candlestick_->write([&](CandlestickStoreSnapshot &store) {
-      while (store.start_timestamp_ms_ < target_interval_start_ms) {
-        yes_map_->put(
-            computeTimeBucket(store.start_timestamp_ms_,
-                              constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
-            store);
+  yes_live_candlestick_->write([&](CandlestickStoreSnapshot &store) {
+    while (store.start_timestamp_ms_ < target_interval_start_ms) {
+      yes_map_->put(
+          computeTimeBucket(store.start_timestamp_ms_,
+                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
+          store);
 
-        int32_t last_close{store.close_};
+      int32_t last_close{store.close_};
 
-        // 255 is a sentinel value for no data
-        if (last_close != 255) {
-          store.open_ = last_close;
-          store.high_ = last_close;
-          store.low_ = last_close;
-          store.close_ = last_close;
-        }
-
-        store.start_timestamp_ms_ =
-            computeTimeBucket(store.start_timestamp_ms_ +
-                                  constants::CANDLESTICK_HISTORY_GRANULARITY_MS,
-                              constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+      // 255 is a sentinel value for no data
+      if (last_close != 255) {
+        store.open_ = last_close;
+        store.high_ = last_close;
+        store.low_ = last_close;
+        store.close_ = last_close;
       }
-    });
-  }
-  case Side::No: {
-    no_live_candlestick_->write([&](CandlestickStoreSnapshot &store) {
-      while (store.start_timestamp_ms_ < target_interval_start_ms) {
-        no_map_->put(
-            computeTimeBucket(store.start_timestamp_ms_,
-                              constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
-            store);
 
-        int32_t last_close{store.close_};
+      store.start_timestamp_ms_ =
+          computeTimeBucket(store.start_timestamp_ms_ +
+                                constants::CANDLESTICK_HISTORY_GRANULARITY_MS,
+                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+    }
+  });
+  no_live_candlestick_->write([&](CandlestickStoreSnapshot &store) {
+    while (store.start_timestamp_ms_ < target_interval_start_ms) {
+      no_map_->put(
+          computeTimeBucket(store.start_timestamp_ms_,
+                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
+          store);
 
-        // 255 is a sentinel value for no data
-        if (last_close != 255) {
-          store.open_ = last_close;
-          store.high_ = last_close;
-          store.low_ = last_close;
-          store.close_ = last_close;
-        }
+      int32_t last_close{store.close_};
 
-        store.start_timestamp_ms_ =
-            computeTimeBucket(store.start_timestamp_ms_ +
-                                  constants::CANDLESTICK_HISTORY_GRANULARITY_MS,
-                              constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+      // 255 is a sentinel value for no data
+      if (last_close != 255) {
+        store.open_ = last_close;
+        store.high_ = last_close;
+        store.low_ = last_close;
+        store.close_ = last_close;
       }
-    });
-  }
-  case Side::Unknown:
-    // TODO: Think about what happens here
-    break;
-  }
+
+      store.start_timestamp_ms_ =
+          computeTimeBucket(store.start_timestamp_ms_ +
+                                constants::CANDLESTICK_HISTORY_GRANULARITY_MS,
+                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
+    }
+  });
 }
 
 [[nodiscard]] std::optional<CandlestickStoreSnapshot>

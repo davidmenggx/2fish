@@ -47,7 +47,7 @@ public:
     return last_valid_timestamp_ms_.load(std::memory_order_acquire);
   }
 
-  void tryRolloverCandlestick(int64_t now_ms, Side side);
+  void tryRolloverCandlesticks(int64_t now_ms);
 
 private:
   void tryFetchHistoricalCandlestick(int64_t query_timestamp_ms, Side side);
