@@ -2,6 +2,7 @@
 #include "common/core/rest_data_types.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "common/utils/cpu_relax.hpp"
+#include "common/utils/set_query_params.hpp"
 #include "config.hpp"
 #include "constants.hpp"
 
@@ -16,6 +17,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
 
 Engine::Engine(moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue,
                moodycamel::ReaderWriterQueue<RestMessage> &rest_patch_queue,
@@ -123,6 +125,17 @@ void Engine::handleCandlestickStoreMismatch() {
   std::string target =
       std::format("/trade-api/v2/series/{}/markets/{}/candlesticks",
                   config_.series_ticker_, config_.market_ticker_);
+
+  // TODO: Perhaps a better way of computing these timestamps
+  auto now_s =
+      std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch())
+          .count();
+  auto query_start_ts_s{now_s -
+                        (constants::CANDLESTICK_HISTORY_GRANULARITY_MS / 1000)};
+
+  setQueryParams(target, std::make_pair("start_ts", query_start_ts_s),
+                 std::make_pair("end_ts", now_s),
+                 std::make_pair("period_interval", 1));
 
   rest_client_.get(host, target);
 }

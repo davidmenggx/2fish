@@ -8,7 +8,7 @@
 
 struct CandlestickMessageRest {
   struct Candlestick {
-    int64_t end_period_ts_ms_{};
+    int64_t end_period_ts_s_{};
     uint8_t open_cents_{};
     uint8_t high_cents_{};
     uint8_t low_cents_{};

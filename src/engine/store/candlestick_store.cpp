@@ -51,7 +51,6 @@ CandlestickStore::recordTradeMessageWs(WebsocketMessage &message) {
     return false; // Signify that we have missed a message
   }
 
-  std::cout << "Got a trade message\n";
   ++last_message_seq_;
 
   switch (message_body->taker_side_) {

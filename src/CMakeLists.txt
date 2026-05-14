@@ -7,6 +7,8 @@ add_library(3fishCore STATIC
   common/core/websocket_data_types.hpp
   common/utils/compute_time_bucket.hpp
   common/utils/cpu_relax.hpp
+  common/utils/parse_json_double.hpp
+  common/utils/set_query_params.hpp
   config.hpp
   constants.hpp
   driver/driver.hpp
