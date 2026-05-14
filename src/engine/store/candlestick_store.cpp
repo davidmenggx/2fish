@@ -65,46 +65,40 @@ CandlestickStore::recordTradeMessageWs(WebsocketMessage &message) {
 
   ++last_message_seq_;
 
+  auto update_candlestick = [message_body](CandlestickStoreSnapshot &store,
+                                           uint8_t price_cents) {
+    // TODO: Think about what should happen if a trade comes in late
+    if (message_body->timestamp_ms_ < store.start_timestamp_ms_)
+      return;
+    if (store.open_ == 255)
+      store.open_ = price_cents;
+    if (store.high_ == 255)
+      store.high_ = price_cents;
+    else
+      store.high_ = std::max(store.high_, price_cents);
+    if (store.low_ == 255)
+      store.low_ = price_cents;
+    else
+      store.low_ = std::min(store.low_, price_cents);
+    store.close_ = price_cents;
+  };
+
   switch (message_body->taker_side_) {
   case Side::Yes:
     yes_live_candlestick_->write([&](CandlestickStoreSnapshot &store) {
-      // TODO: Think about what should happen if a trade comes in late
-      if (message_body->timestamp_ms_ < store.start_timestamp_ms_)
-        return;
-      if (store.open_ == 255)
-        store.open_ = message_body->yes_price_cents_;
-      if (store.high_ == 255)
-        store.high_ = message_body->yes_price_cents_;
-      else
-        store.high_ = std::max(store.high_, message_body->yes_price_cents_);
-      if (store.low_ == 255)
-        store.low_ = message_body->yes_price_cents_;
-      else
-        store.low_ = std::min(store.low_, message_body->yes_price_cents_);
-      store.close_ = message_body->yes_price_cents_;
+      update_candlestick(store, message_body->yes_price_cents_);
     });
     break;
   case Side::No:
     no_live_candlestick_->write([&](CandlestickStoreSnapshot &store) {
-      if (message_body->timestamp_ms_ < store.start_timestamp_ms_)
-        return;
-      if (store.open_ == 255)
-        store.open_ = message_body->no_price_cents_;
-      if (store.high_ == 255)
-        store.high_ = message_body->no_price_cents_;
-      else
-        store.high_ = std::max(store.high_, message_body->no_price_cents_);
-      if (store.low_ == 255)
-        store.low_ = message_body->no_price_cents_;
-      else
-        store.low_ = std::min(store.low_, message_body->no_price_cents_);
-      store.close_ = message_body->no_price_cents_;
+      update_candlestick(store, message_body->no_price_cents_);
     });
     break;
   case Side::Unknown:
     // TODO: Think about what to do here
     break;
   }
+
   tryRolloverCandlesticks(message_body->timestamp_ms_);
   return true;
 }
@@ -114,12 +108,13 @@ void CandlestickStore::tryRolloverCandlesticks(int64_t now_ms) {
   // I think this constant write is causing some contention.
   int64_t target_interval_start_ms{
       computeTimeBucket(now_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS)};
-  yes_live_candlestick_->write([&](CandlestickStoreSnapshot &store) {
+
+  auto perform_rollover = [target_interval_start_ms](
+                              CandlestickStoreSnapshot &store, auto &map) {
     while (store.start_timestamp_ms_ < target_interval_start_ms) {
-      yes_map_->put(
-          computeTimeBucket(store.start_timestamp_ms_,
-                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
-          store);
+      map->put(computeTimeBucket(store.start_timestamp_ms_,
+                                 constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
+               store);
 
       int32_t last_close{store.close_};
 
@@ -136,29 +131,13 @@ void CandlestickStore::tryRolloverCandlesticks(int64_t now_ms) {
                                 constants::CANDLESTICK_HISTORY_GRANULARITY_MS,
                             constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
     }
+  };
+
+  yes_live_candlestick_->write([&](CandlestickStoreSnapshot &store) {
+    perform_rollover(store, yes_map_);
   });
   no_live_candlestick_->write([&](CandlestickStoreSnapshot &store) {
-    while (store.start_timestamp_ms_ < target_interval_start_ms) {
-      no_map_->put(
-          computeTimeBucket(store.start_timestamp_ms_,
-                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
-          store);
-
-      int32_t last_close{store.close_};
-
-      // 255 is a sentinel value for no data
-      if (last_close != 255) {
-        store.open_ = last_close;
-        store.high_ = last_close;
-        store.low_ = last_close;
-        store.close_ = last_close;
-      }
-
-      store.start_timestamp_ms_ =
-          computeTimeBucket(store.start_timestamp_ms_ +
-                                constants::CANDLESTICK_HISTORY_GRANULARITY_MS,
-                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS);
-    }
+    perform_rollover(store, no_map_);
   });
 }
 
@@ -170,44 +149,40 @@ CandlestickStore::get(int64_t query_timestamp_ms, Side side) {
     return std::nullopt;
   }
 
+  auto fetch_snapshot =
+      [&](auto &live_store, auto &history_map,
+          Side fetch_side) -> std::optional<CandlestickStoreSnapshot> {
+    CandlestickStoreSnapshot live_snapshot = live_store->read(
+        [](const CandlestickStoreSnapshot &store) { return store; });
+
+    if (query_timestamp_ms >= live_snapshot.start_timestamp_ms_ &&
+        live_snapshot.open_ != 255 && live_snapshot.high_ != 255 &&
+        live_snapshot.low_ != 255 && live_snapshot.close_ != 255)
+      return live_snapshot;
+
+    auto result = history_map->get(computeTimeBucket(
+        query_timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS));
+
+    if (!result)
+      tryFetchHistoricalCandlestick(
+          computeTimeBucket(query_timestamp_ms,
+                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
+          fetch_side);
+
+    return result;
+  };
+
   switch (side) {
-  case Side::Yes: {
+  case Side::Yes:
     // Fast lock-free read
-    CandlestickStoreSnapshot live_snapshot = yes_live_candlestick_->read(
-        [](const CandlestickStoreSnapshot &store) { return store; });
-    if (query_timestamp_ms >= live_snapshot.start_timestamp_ms_ &&
-        live_snapshot.open_ != 255 && live_snapshot.high_ != 255 &&
-        live_snapshot.low_ != 255 && live_snapshot.close_ != 255)
-      return live_snapshot;
-    auto result = yes_map_->get(computeTimeBucket(
-        query_timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS));
-    if (!result)
-      tryFetchHistoricalCandlestick(
-          computeTimeBucket(query_timestamp_ms,
-                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
-          Side::Yes);
-    return result;
-  }
-  case Side::No: {
-    CandlestickStoreSnapshot live_snapshot = no_live_candlestick_->read(
-        [](const CandlestickStoreSnapshot &store) { return store; });
-    if (query_timestamp_ms >= live_snapshot.start_timestamp_ms_ &&
-        live_snapshot.open_ != 255 && live_snapshot.high_ != 255 &&
-        live_snapshot.low_ != 255 && live_snapshot.close_ != 255)
-      return live_snapshot;
-    auto result = no_map_->get(computeTimeBucket(
-        query_timestamp_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS));
-    if (!result)
-      tryFetchHistoricalCandlestick(
-          computeTimeBucket(query_timestamp_ms,
-                            constants::CANDLESTICK_HISTORY_GRANULARITY_MS),
-          Side::No);
-    return result;
-  }
+    return fetch_snapshot(yes_live_candlestick_, yes_map_, Side::Yes);
+  case Side::No:
+    return fetch_snapshot(no_live_candlestick_, no_map_, Side::No);
   case Side::Unknown:
     // TODO: Think about what to do here
     break;
   }
+
   return std::nullopt;
 }
 
@@ -242,6 +217,7 @@ void CandlestickStore::tryPatch(RestMessage &message) {
         .low_ = candlestick.low_cents_,
         .close_ = candlestick.close_cents_,
         .start_timestamp_ms_ = candlestick_start_timestamp_ms};
+
     if (candlestick_start_timestamp_ms >=
         live_yes_snapshot.start_timestamp_ms_) {
       yes_live_candlestick_->write([&](CandlestickStoreSnapshot &store) {
@@ -258,6 +234,7 @@ void CandlestickStore::tryPatch(RestMessage &message) {
         .low_ = static_cast<uint8_t>(100 - candlestick.low_cents_),
         .close_ = static_cast<uint8_t>(100 - candlestick.close_cents_),
         .start_timestamp_ms_ = candlestick_start_timestamp_ms};
+
     if (candlestick_start_timestamp_ms >=
         live_no_snapshot.start_timestamp_ms_) {
       no_live_candlestick_->write([&](CandlestickStoreSnapshot &store) {
@@ -287,6 +264,7 @@ void CandlestickStore::tryFetchHistoricalCandlestick(int64_t query_timestamp_ms,
   auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                     now.time_since_epoch())
                     .count();
+
   // Don't spam the request if one has recently been sent out
   std::optional<int64_t> last_queried_timestamp_ms{
       candlestick_fetch_history_->get(query_timestamp_ms)};
@@ -323,6 +301,7 @@ void CandlestickStore::tryStoreHistorical(RestMessage &message) {
   for (auto &candlestick : message_body->candlesticks_) {
     int64_t candlestick_start_timestamp_ms{(candlestick.end_period_ts_s_ - 60) *
                                            1000};
+
     yes_map_->put(candlestick_start_timestamp_ms,
                   {.open_ = candlestick.open_cents_,
                    .high_ = candlestick.high_cents_,

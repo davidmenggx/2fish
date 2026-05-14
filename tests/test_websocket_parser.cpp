@@ -44,9 +44,9 @@ TEST(WebsocketParserTest, ParsesValidOrderbookSnapshot) {
   expected.yes_dollars_[1] = 183.48;
   expected.yes_dollars_[5] = 1.00;
   expected.yes_dollars_[6] = 8.37;
-  expected.yes_dollars_[40] = 2695.00;
+  expected.yes_dollars_[40] = 2'695.00;
 
-  expected.no_dollars_[1] = 50196.68;
+  expected.no_dollars_[1] = 50'196.68;
   expected.no_dollars_[12] = 8.00;
   expected.no_dollars_[100] = 2.34;
 

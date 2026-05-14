@@ -13,16 +13,23 @@ struct CandlestickMessageRest {
     uint8_t high_cents_{};
     uint8_t low_cents_{};
     uint8_t close_cents_{};
+
+    bool
+    operator==(const CandlestickMessageRest::Candlestick &) const = default;
   };
 
   // TODO: Vector here is a bit questionable
   std::vector<Candlestick> candlesticks_{};
+
+  bool operator==(const CandlestickMessageRest &) const = default;
 };
 
 struct OrderbookSnapshotMessageRest {
   std::array<long double, 101> yes_dollars_{};
   std::array<long double, 101> no_dollars_{};
   int64_t timestamp_ms_{std::numeric_limits<int64_t>::min()};
+
+  bool operator==(const OrderbookSnapshotMessageRest &) const = default;
 };
 
 struct RestMessage {

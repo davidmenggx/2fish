@@ -2,6 +2,7 @@
 #include "common/core/types.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "common/utils/parse_json_double.hpp"
+#include "common/utils/price_round.hpp"
 
 #include "moodycamel/readerwriterqueue.h"
 #include <simdjson.h>
@@ -85,7 +86,7 @@ WebsocketParser::parseOrderbookSnapshot(simdjson::ondemand::object &msg) {
         double price = parseJsonDouble(price_str);
         double volume = parseJsonDouble(vol_str);
 
-        uint8_t price_level = static_cast<uint8_t>(std::round(price * 100.0));
+        uint8_t price_level = static_cast<uint8_t>(priceRound(price * 100.0));
         dollars_array[price_level] += static_cast<long double>(volume);
       }
     }
@@ -110,7 +111,7 @@ WebsocketParser::parseOrderbookDelta(simdjson::ondemand::object &msg) {
       delta.timestamp_ms_ = field.value().get_int64();
     } else if (key == "price_dollars") {
       double price = parseJsonDouble(field.value().get_string());
-      delta.price_cents_ = std::round(price * 100.0);
+      delta.price_cents_ = priceRound(price * 100.0);
     } else if (key == "delta_fp") {
       delta.delta_ = parseJsonDouble(field.value().get_string());
     } else if (key == "side") {
@@ -136,10 +137,10 @@ TradeMessageWs WebsocketParser::parseTrade(simdjson::ondemand::object &msg) {
       trade.trade_id_ = trade_id_sv;
     } else if (key == "yes_price_dollars") {
       double price = parseJsonDouble(field.value().get_string());
-      trade.yes_price_cents_ = std::round(price * 100.0);
+      trade.yes_price_cents_ = priceRound(price * 100.0);
     } else if (key == "no_price_dollars") {
       double price = parseJsonDouble(field.value().get_string());
-      trade.no_price_cents_ = std::round(price * 100.0);
+      trade.no_price_cents_ = priceRound(price * 100.0);
     } else if (key == "count_fp") {
       trade.contracts_traded_ = parseJsonDouble(field.value().get_string());
     } else if (key == "taker_side") {

@@ -1,6 +1,7 @@
 #include "rest_parser.hpp"
 #include "common/core/rest_data_types.hpp"
 #include "common/utils/parse_json_double.hpp"
+#include "common/utils/price_round.hpp"
 
 #include "moodycamel/readerwriterqueue.h"
 
@@ -57,7 +58,7 @@ void RestParser::parseAndPush(simdjson::padded_string_view padded_json) {
               double tmp_volume = parseJsonDouble(vol_str);
 
               uint8_t price_level =
-                  static_cast<uint8_t>(std::round(tmp_price_level * 100.0));
+                  static_cast<uint8_t>(priceRound(tmp_price_level * 100.0));
               dollars_array[price_level] +=
                   static_cast<long double>(tmp_volume);
             }
@@ -86,22 +87,22 @@ void RestParser::parseAndPush(simdjson::padded_string_view padded_json) {
                   double open_dollars =
                       parseJsonDouble(inner_price_field.value().get_string());
                   current_candlestick.open_cents_ =
-                      std::round(open_dollars * 100.0);
+                      priceRound(open_dollars * 100.0);
                 } else if (inner_price_key == "high_dollars") {
                   double high_dollars =
                       parseJsonDouble(inner_price_field.value().get_string());
                   current_candlestick.high_cents_ =
-                      std::round(high_dollars * 100.0);
+                      priceRound(high_dollars * 100.0);
                 } else if (inner_price_key == "low_dollars") {
                   double low_dollars =
                       parseJsonDouble(inner_price_field.value().get_string());
                   current_candlestick.low_cents_ =
-                      std::round(low_dollars * 100.0);
+                      priceRound(low_dollars * 100.0);
                 } else if (inner_price_key == "close_dollars") {
                   double close_dollars =
                       parseJsonDouble(inner_price_field.value().get_string());
                   current_candlestick.close_cents_ =
-                      std::round(close_dollars * 100.0);
+                      priceRound(close_dollars * 100.0);
                 }
               }
             }
