@@ -7,6 +7,17 @@
     "boost-filesystem",
     "gtest",
     "openssl",
-    "simdjson"
+    "simdjson",
+    "implot",
+    "sdl3",
+    "vulkan",
+    {
+      "name": "imgui",
+      "features": [
+        "docking-experimental",
+        "sdl3-binding",
+        "vulkan-binding"
+      ]
+    }
   ]
 }

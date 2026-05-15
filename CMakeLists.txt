@@ -20,6 +20,11 @@ find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system filesystem)
 find_package(simdjson CONFIG REQUIRED)
 
+find_package(Vulkan REQUIRED)
+find_package(SDL3 CONFIG REQUIRED)
+find_package(imgui CONFIG REQUIRED)
+find_package(implot CONFIG REQUIRED)
+
 add_subdirectory(src)
 
 option(BUILD_TESTS "Build the unit tests" ON)

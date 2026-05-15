@@ -46,6 +46,10 @@ target_link_libraries(3fishCore PUBLIC
   Boost::system
   Boost::filesystem
   simdjson::simdjson
+  Vulkan::Vulkan
+  SDL3::SDL3-static
+  imgui::imgui
+  implot::implot
 )
 
 if(WIN32)
