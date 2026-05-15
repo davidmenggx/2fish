@@ -2,16 +2,16 @@
 
 #include "common/core/rest_data_types.hpp"
 
-#include "moodycamel/readerwriterqueue.h"
+#include "moodycamel/concurrentqueue.h"
 
 #include <simdjson.h>
 
 class RestParser {
 public:
-  RestParser(moodycamel::ReaderWriterQueue<RestMessage> &output_data_queue);
+  RestParser(moodycamel::ConcurrentQueue<RestMessage> &output_data_queue);
 
   void parseAndPush(simdjson::padded_string_view padded_json);
 
 private:
-  moodycamel::ReaderWriterQueue<RestMessage> &output_data_queue_;
+  moodycamel::ConcurrentQueue<RestMessage> &output_data_queue_;
 };

@@ -5,6 +5,8 @@
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 
+#include "moodycamel/concurrentqueue.h"
+
 #include <simdjson.h>
 
 #include <cstdlib>
@@ -12,6 +14,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace beast = boost::beast;
@@ -21,7 +24,7 @@ namespace ssl = boost::asio::ssl;
 using tcp = boost::asio::ip::tcp;
 
 RestClient::RestClient(
-    moodycamel::ReaderWriterQueue<RestMessage> &output_data_queue,
+    moodycamel::ConcurrentQueue<RestMessage> &output_data_queue,
     std::size_t thread_count)
     : parser_{output_data_queue}, ctx_(ssl::context::tlsv12_client),
       work_guard_(net::make_work_guard(ioc_)) {
@@ -48,6 +51,12 @@ RestClient::RestClient(
   for (std::size_t i{0}; i < thread_count; ++i) {
     threads_.emplace_back([this] { ioc_.run(); });
   }
+
+  connection_pool_ =
+      std::make_unique<ObjectPool<std::shared_ptr<HttpsSession>,
+                                  constants::HTTPS_SESSION_POOL_SIZE>>([this] {
+        return std::make_shared<HttpsSession>(this->ioc_, this->ctx_);
+      });
 }
 
 RestClient::~RestClient() {
@@ -60,13 +69,22 @@ RestClient::~RestClient() {
 }
 
 void RestClient::get(const std::string &host, const std::string &target) {
-  auto handle_response = [this](unsigned int status, std::string body) {
-    if (status == 200) {
-      // TODO: Try to avoid this allocation
+  std::shared_ptr<HttpsSession> session{nullptr};
+
+  auto pooled_session_opt = connection_pool_->get();
+  if (pooled_session_opt)
+    session = std::move(*pooled_session_opt);
+  else
+    session = std::make_shared<HttpsSession>(ioc_, ctx_);
+
+  std::weak_ptr<HttpsSession> weak_session{session};
+  auto handle_response = [this, weak_session](unsigned int status,
+                                              std::string body) {
+    if (status == 200)
       parser_.parseAndPush(simdjson::padded_string(body.data(), body.size()));
-    }
+    if (auto sess = weak_session.lock())
+      connection_pool_->replace(std::move(sess));
   };
 
-  std::make_shared<HttpsSession>(ioc_, ctx_, handle_response)
-      ->run(host, "443", target);
+  session->run(host, "443", target, std::move(handle_response));
 }

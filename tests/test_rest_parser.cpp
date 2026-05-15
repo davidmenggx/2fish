@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 
-#include "moodycamel/readerwriterqueue.h"
+#include "moodycamel/concurrentqueue.h"
 #include <simdjson.h>
 
 #include <string>
@@ -13,7 +13,7 @@
 // Test success cases
 
 TEST(RestParserTest, ParsesValidOrderbookSnapshot) {
-  moodycamel::ReaderWriterQueue<RestMessage> queue{};
+  moodycamel::ConcurrentQueue<RestMessage> queue{};
   RestParser parser{queue};
 
   const std::string raw_json =
@@ -49,7 +49,7 @@ TEST(RestParserTest, ParsesValidOrderbookSnapshot) {
 }
 
 TEST(RestParserTest, ParsesValidCandlestick) {
-  moodycamel::ReaderWriterQueue<RestMessage> queue{};
+  moodycamel::ConcurrentQueue<RestMessage> queue{};
   RestParser parser{queue};
 
   const std::string raw_json =
@@ -93,7 +93,7 @@ TEST(RestParserTest, ParsesValidCandlestick) {
 // Test failure cases
 
 TEST(RestParserTest, DropsMalformedMessage) {
-  moodycamel::ReaderWriterQueue<RestMessage> queue{};
+  moodycamel::ConcurrentQueue<RestMessage> queue{};
   RestParser parser{queue};
 
   const std::string raw_json =
@@ -107,7 +107,7 @@ TEST(RestParserTest, DropsMalformedMessage) {
 }
 
 TEST(RestParserTest, DropsUnknownMessageType) {
-  moodycamel::ReaderWriterQueue<RestMessage> queue{};
+  moodycamel::ConcurrentQueue<RestMessage> queue{};
   RestParser parser{queue};
 
   const std::string raw_json =

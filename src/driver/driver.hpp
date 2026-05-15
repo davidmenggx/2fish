@@ -18,7 +18,6 @@ public:
 
 private:
   moodycamel::ReaderWriterQueue<WebsocketMessage> websocket_queue_{};
-  moodycamel::ReaderWriterQueue<RestMessage> rest_patch_queue_;
 
   std::atomic<bool> running_{ true };
 

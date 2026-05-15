@@ -9,7 +9,7 @@
 #include "constants.hpp"
 #include "network/rest/rest_client.hpp"
 
-#include "moodycamel/readerwriterqueue.h"
+#include "moodycamel/concurrentqueue.h"
 
 #include <atomic>
 #include <cstdint>
@@ -27,7 +27,7 @@ struct CandlestickStoreSnapshot {
 
 class CandlestickStore {
 public:
-  CandlestickStore(moodycamel::ReaderWriterQueue<RestMessage> &rest_query_queue,
+  CandlestickStore(moodycamel::ConcurrentQueue<RestMessage> &rest_query_queue,
                    Config config);
 
   [[nodiscard]] bool recordTradeMessageWs(WebsocketMessage &message);

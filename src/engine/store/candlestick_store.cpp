@@ -9,7 +9,7 @@
 #include "config.hpp"
 #include "constants.hpp"
 
-#include "moodycamel/readerwriterqueue.h"
+#include "moodycamel/concurrentqueue.h"
 
 #include <algorithm>
 #include <chrono>
@@ -23,7 +23,7 @@
 #include <iostream>
 
 CandlestickStore::CandlestickStore(
-    moodycamel::ReaderWriterQueue<RestMessage> &rest_query_queue, Config config)
+    moodycamel::ConcurrentQueue<RestMessage> &rest_query_queue, Config config)
     : yes_live_candlestick_{std::make_unique<
           SeqLockWrapper<CandlestickStoreSnapshot>>()},
       yes_map_{
@@ -287,7 +287,6 @@ void CandlestickStore::tryFetchHistoricalCandlestick(int64_t query_timestamp_ms,
                                    1000),
       std::make_pair("period_interval", 1));
 
-  // CRITICAL: THIS IS NOT THREAD SAFE! WE MUST USE SOME TYPE OF CLIENT POOL
   rest_client_.get(host, target);
 }
 

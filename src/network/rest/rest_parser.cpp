@@ -3,7 +3,7 @@
 #include "common/utils/parse_json_double.hpp"
 #include "common/utils/price_round.hpp"
 
-#include "moodycamel/readerwriterqueue.h"
+#include "moodycamel/concurrentqueue.h"
 
 #include <simdjson.h>
 
@@ -16,7 +16,7 @@
 #include <string_view>
 
 RestParser::RestParser(
-    moodycamel::ReaderWriterQueue<RestMessage> &output_data_queue)
+    moodycamel::ConcurrentQueue<RestMessage> &output_data_queue)
     : output_data_queue_{output_data_queue} {}
 
 void RestParser::parseAndPush(simdjson::padded_string_view padded_json) {
@@ -137,5 +137,5 @@ void RestParser::parseAndPush(simdjson::padded_string_view padded_json) {
     break;
   }
 
-  output_data_queue_.try_emplace(message);
+  output_data_queue_.try_enqueue(message);
 }

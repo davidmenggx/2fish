@@ -1,13 +1,15 @@
 #pragma once
 
+#include "common/containers/object_pool.hpp"
 #include "common/core/rest_data_types.hpp"
 #include "constants.hpp"
+#include "https_session.hpp"
 #include "rest_parser.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 
-#include "moodycamel/readerwriterqueue.h"
+#include "moodycamel/concurrentqueue.h"
 
 #include <memory>
 #include <string>
@@ -20,7 +22,7 @@ namespace ssl = boost::asio::ssl;
 class RestClient {
 public:
   explicit RestClient(
-      moodycamel::ReaderWriterQueue<RestMessage> &output_data_queue,
+      moodycamel::ConcurrentQueue<RestMessage> &output_data_queue,
       std::size_t thread_count = constants::REST_THREAD_COUNT);
   ~RestClient();
 
@@ -28,6 +30,11 @@ public:
 
 private:
   RestParser parser_;
+
+  // Thread safe connection pool
+  std::unique_ptr<ObjectPool<std::shared_ptr<HttpsSession>,
+                             constants::HTTPS_SESSION_POOL_SIZE>>
+      connection_pool_{nullptr};
 
   net::io_context ioc_;
   ssl::context ctx_;

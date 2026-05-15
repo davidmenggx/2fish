@@ -8,6 +8,7 @@
 #include "store/orderbook_store.hpp"
 
 #include "moodycamel/readerwriterqueue.h"
+#include "moodycamel/concurrentqueue.h"
 
 #include <atomic>
 #include <cstdint>
@@ -32,8 +33,8 @@ private:
   const Config config_;
 
   moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue_;
-  moodycamel::ReaderWriterQueue<RestMessage> rest_patch_queue_;
-  moodycamel::ReaderWriterQueue<RestMessage> rest_query_queue_; 
+  moodycamel::ConcurrentQueue<RestMessage> rest_patch_queue_;
+  moodycamel::ConcurrentQueue<RestMessage> rest_query_queue_; 
 
   OrderbookStore orderbook_store_{};
   CandlestickStore candlestick_store_;

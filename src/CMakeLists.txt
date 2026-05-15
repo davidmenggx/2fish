@@ -1,4 +1,5 @@
 add_library(3fishCore STATIC
+  common/containers/object_pool.hpp
   common/containers/ring_buffer.hpp
   common/containers/seqlock_wrapper.hpp
   common/containers/swmr_map.hpp
@@ -8,6 +9,7 @@ add_library(3fishCore STATIC
   common/utils/compute_time_bucket.hpp
   common/utils/cpu_relax.hpp
   common/utils/parse_json_double.hpp
+  common/utils/price_round.hpp
   common/utils/set_query_params.hpp
   config.hpp
   constants.hpp
