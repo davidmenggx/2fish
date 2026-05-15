@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/utils/cpu_relax.hpp"
+#include "constants.hpp"
 
 #include <array>
 #include <atomic>
@@ -145,12 +146,12 @@ public:
 private:
   static constexpr std::size_t mask_{Capacity - 1};
 
-  alignas(64) std::atomic<std::size_t> seq_{0};
+  alignas(constants::CACHE_LINE_SIZE) std::atomic<std::size_t> seq_{0};
 
   std::atomic<std::size_t> head_{0};
   std::atomic<std::size_t> tail_{0};
 
-  alignas(64) std::array<T, Capacity> data_{};
+  alignas(constants::CACHE_LINE_SIZE) std::array<T, Capacity> data_{};
 
   std::atomic_flag writer_lock_ = ATOMIC_FLAG_INIT;
 };

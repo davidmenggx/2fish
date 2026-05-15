@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/utils/cpu_relax.hpp"
+#include "constants.hpp"
 
 #include <atomic>
 #include <stdexcept>
@@ -58,7 +59,7 @@ public:
   }
 
 private:
-  alignas(64) std::atomic<size_t> seq_{0};
+  alignas(constants::CACHE_LINE_SIZE) std::atomic<size_t> seq_{0};
   T data_;
 
   std::atomic_flag writer_lock_ = ATOMIC_FLAG_INIT;

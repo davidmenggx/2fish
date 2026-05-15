@@ -128,7 +128,6 @@ void OrderbookStore::recordOrderbookDelta(WebsocketMessage &message) {
     });
     break;
   case Side::Unknown:
-    // TODO: Think about what to do here
     break;
   }
 
@@ -203,7 +202,6 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
         query_timestamp_ms < earliest_yes_message->start_timestamp_ms_)
       return std::nullopt;
 
-    // TODO: Perhaps cache this timestamp instead of fetching it from the data
     // Fast lock-free read
     OrderbookStoreSnapshot live_snapshot = yes_live_snapshot_->read(
         [](const OrderbookStoreSnapshot &store) { return store; });
@@ -238,7 +236,6 @@ OrderbookStore::get(int64_t query_timestamp_ms, Side side) {
         });
   }
   case Side::Unknown:
-    // TODO: Think about what to do here
     break;
   }
   return std::nullopt;

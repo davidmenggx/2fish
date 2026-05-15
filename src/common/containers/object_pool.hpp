@@ -1,5 +1,7 @@
 #pragma once
 
+#include "constants.hpp"
+
 #include <array>
 #include <atomic>
 #include <bit>
@@ -88,12 +90,12 @@ public:
   }
 
 private:
-  struct alignas(64) Cell {
+  struct alignas(constants::CACHE_LINE_SIZE) Cell {
     std::atomic<std::size_t> sequence;
     std::optional<T> data;
   };
 
-  alignas(64) std::array<Cell, Capacity> buffer_;
-  alignas(64) std::atomic<std::size_t> enqueue_pos_;
-  alignas(64) std::atomic<std::size_t> dequeue_pos_;
+  alignas(constants::CACHE_LINE_SIZE) std::array<Cell, Capacity> buffer_;
+  alignas(constants::CACHE_LINE_SIZE) std::atomic<std::size_t> enqueue_pos_;
+  alignas(constants::CACHE_LINE_SIZE) std::atomic<std::size_t> dequeue_pos_;
 };

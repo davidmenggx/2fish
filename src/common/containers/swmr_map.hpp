@@ -1,5 +1,7 @@
 #pragma once
 
+#include "constants.hpp"
+
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -158,7 +160,7 @@ private:
 
   // EBR state
   struct ReaderState {
-    alignas(64) std::atomic<bool> active_{false};
+    alignas(constants::CACHE_LINE_SIZE) std::atomic<bool> active_{false};
     std::atomic<uint64_t> epoch_{0};
   };
 
@@ -167,8 +169,9 @@ private:
     uint64_t epoch_;
   };
 
-  alignas(64) std::array<ReaderState, MaxReaders> reader_states_;
-  alignas(64) std::atomic<uint64_t> global_epoch_{1};
+  alignas(constants::CACHE_LINE_SIZE)
+      std::array<ReaderState, MaxReaders> reader_states_;
+  alignas(constants::CACHE_LINE_SIZE) std::atomic<uint64_t> global_epoch_{1};
 
   inline static std::atomic<uint64_t> active_thread_slots_{0};
 

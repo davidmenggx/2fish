@@ -120,7 +120,6 @@ void RestParser::parseAndPush(simdjson::padded_string_view padded_json) {
     std::cout << "Couldn't find the message type, skipping\n";
     return;
   case RestMessage::MessageType::OrderbookSnapshot:
-    // TODO: Perhaps it is not ideal to ask for time here
     // Min is a sentinel for no timestamp (predates the Big Bang as of 2026)
     if (orderbook_snapshot_accumulator.timestamp_ms_ ==
         std::numeric_limits<int64_t>::min()) {

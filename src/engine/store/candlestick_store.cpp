@@ -67,7 +67,6 @@ CandlestickStore::recordTradeMessageWs(WebsocketMessage &message) {
 
   auto update_candlestick = [message_body](CandlestickStoreSnapshot &store,
                                            uint8_t price_cents) {
-    // TODO: Think about what should happen if a trade comes in late
     if (message_body->timestamp_ms_ < store.start_timestamp_ms_)
       return;
     if (store.open_ == 255)
@@ -95,7 +94,6 @@ CandlestickStore::recordTradeMessageWs(WebsocketMessage &message) {
     });
     break;
   case Side::Unknown:
-    // TODO: Think about what to do here
     break;
   }
 
@@ -104,8 +102,6 @@ CandlestickStore::recordTradeMessageWs(WebsocketMessage &message) {
 }
 
 void CandlestickStore::tryRolloverCandlesticks(int64_t now_ms) {
-  // TODO: We really should cache the start timestamp of the live candle,
-  // I think this constant write is causing some contention.
   int64_t target_interval_start_ms{
       computeTimeBucket(now_ms, constants::CANDLESTICK_HISTORY_GRANULARITY_MS)};
 
@@ -179,7 +175,6 @@ CandlestickStore::get(int64_t query_timestamp_ms, Side side) {
   case Side::No:
     return fetch_snapshot(no_live_candlestick_, no_map_, Side::No);
   case Side::Unknown:
-    // TODO: Think about what to do here
     break;
   }
 

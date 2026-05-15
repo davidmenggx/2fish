@@ -32,9 +32,6 @@ public:
   // Repair internal data state in the event of a sequence ID mismatch.
   void tryPatch(RestMessage &message);
 
-  // TODO^^^^: MAKE SURE THAT HOWEVER WE ARE PATCHING, WE MAKE SURE THAT ONCE
-  // WE RESUME THE TIMESTAMPS LINE UP
-
 private:
   void recordOrderbookDelta(WebsocketMessage &message);
   void recordOrderbookSnapshot(WebsocketMessage &message);

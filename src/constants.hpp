@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <thread>
+#include <new>
 
 namespace constants {
 // Market data granularity
@@ -20,6 +20,10 @@ inline constexpr std::size_t REST_THREAD_COUNT{16};
 inline constexpr int64_t REST_MESSAGE_COOLDOWN_MS{2'500};
 inline constexpr std::size_t PAST_MESSAGE_LOOKUP_SIZE{1'024};
 inline constexpr std::size_t HTTPS_SESSION_POOL_SIZE{64};
+
+// Other
+inline constexpr std::size_t CACHE_LINE_SIZE{
+    std::hardware_destructive_interference_size};
 } // namespace constants
 
 static_assert((constants::ENGINE_DEAD_SPIN &
