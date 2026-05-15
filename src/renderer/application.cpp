@@ -23,7 +23,7 @@ Application::Application(std::atomic<bool> &running) : running_{running} {
   uint32_t window_flags{SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN |
                         SDL_WINDOW_HIGH_PIXEL_DENSITY};
   // TODO: better way of setting length & width
-  window_ = SDL_CreateWindow("3fish Terminal", 1920, 1080, window_flags);
+  window_ = SDL_CreateWindow("2fish Terminal", 1920, 1080, window_flags);
   if (!window_)
     throw std::runtime_error(
         std::format("Failed to construct window: {}", SDL_GetError()));

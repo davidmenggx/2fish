@@ -32,7 +32,7 @@ void HttpsSession::run(const std::string &host, const std::string &port,
   req_.method(boost::beast::http::verb::get);
   req_.target(target);
   req_.set(boost::beast::http::field::host, host);
-  req_.set(boost::beast::http::field::user_agent, "3fish");
+  req_.set(boost::beast::http::field::user_agent, "2fish");
 
   req_.keep_alive(true);
 

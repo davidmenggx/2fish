@@ -1,41 +1,18 @@
 {
-<<<<<<< HEAD
   "name": "2fish",
-=======
-  "name": "3fish",
   "builtin-baseline": "0dee4941ac0643c45ac2ca7eee1ae7a0746da32a",
->>>>>>> source-b/renderer
   "dependencies": [
     "boost-beast",
     "boost-system",
     "boost-filesystem",
-<<<<<<< HEAD
-    "openssl",
-    "simdjson",
-=======
     "gtest",
     "openssl",
     "simdjson",
     "implot",
->>>>>>> source-b/renderer
     {
       "name": "sdl3",
       "features": [ "vulkan" ]
     },
-<<<<<<< HEAD
-    {
-      "name": "imgui",
-      "features": [
-        "sdl3-binding",
-        "vulkan-binding"
-      ]
-    },
-    "implot",
-    "glfw3",
-    "vulkan-headers",
-    "vulkan-loader",
-    "vk-bootstrap"
-=======
     "vulkan",
     "vk-bootstrap",
     {
@@ -46,6 +23,5 @@
         "vulkan-binding"
       ]
     }
->>>>>>> source-b/renderer
   ]
 }

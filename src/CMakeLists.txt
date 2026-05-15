@@ -1,47 +1,4 @@
-<<<<<<< HEAD
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
-list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/2fish/main.cpp")
-
-file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/include/*.h")
-
-add_library(2fish_core STATIC ${SOURCES} ${HEADERS})
-
-target_include_directories(2fish_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
-
-target_link_libraries(2fish_core PUBLIC
-    Boost::boost
-    Boost::system 
-    Boost::filesystem
-    Threads::Threads
-    OpenSSL::SSL
-    OpenSSL::Crypto
-    simdjson::simdjson
-    SDL3::SDL3-static
-    imgui::imgui
-    implot::implot
-    glfw 
-    Vulkan::Vulkan
-    vk-bootstrap::vk-bootstrap
-)
-
-if(WIN32)
-    target_link_libraries(2fish_core PUBLIC ws2_32 mswsock bcrypt)
-    target_compile_definitions(2fish_core PUBLIC -D_WIN32_WINNT=0x0A00)
-endif()
-
-target_compile_definitions(2fish_core PUBLIC CPPHTTPLIB_OPENSSL_SUPPORT)
-
-add_executable(2fish 2fish/main.cpp)
-target_compile_features(2fish PUBLIC cxx_std_20)
-target_link_libraries(2fish PRIVATE 2fish_core)
-
-target_include_directories(2fish PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-=======
-add_library(3fishCore STATIC
+add_library(2fishCore STATIC
   common/containers/object_pool.hpp
   common/containers/ring_buffer.hpp
   common/containers/seqlock_wrapper.hpp
@@ -87,12 +44,12 @@ add_library(3fishCore STATIC
   renderer/component/orderbook_view.cpp
 )
 
-target_include_directories(3fishCore PUBLIC 
+target_include_directories(2fishCore PUBLIC 
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/../external
 )
 
-target_link_libraries(3fishCore PUBLIC
+target_link_libraries(2fishCore PUBLIC
   OpenSSL::SSL
   OpenSSL::Crypto
   Boost::system
@@ -106,10 +63,9 @@ target_link_libraries(3fishCore PUBLIC
 )
 
 if(WIN32)
-  target_link_libraries(3fishCore PUBLIC ws2_32 mswsock bcrypt)
-  target_compile_definitions(3fishCore PUBLIC -D_WIN32_WINNT=0x0A00 _CRT_SECURE_NO_WARNINGS)
+  target_link_libraries(2fishCore PUBLIC ws2_32 mswsock bcrypt)
+  target_compile_definitions(2fishCore PUBLIC -D_WIN32_WINNT=0x0A00 _CRT_SECURE_NO_WARNINGS)
 endif()
 
-add_executable(3fish main.cpp)
-target_link_libraries(3fish PRIVATE 3fishCore)
->>>>>>> source-b/renderer
+add_executable(2fish main.cpp)
+target_link_libraries(2fish PRIVATE 2fishCore)
