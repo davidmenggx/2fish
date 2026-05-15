@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 ﻿{
+=======
+{
+>>>>>>> source-b/renderer
   "version": 3,
   "configurePresets": [
     {
@@ -18,8 +22,14 @@
         "CMAKE_CXX_STANDARD": "20",
         "CMAKE_CXX_STANDARD_REQUIRED": "ON",
         "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+<<<<<<< HEAD
         "CMAKE_TOOLCHAIN_FILE": "C:/Users/david/VCPKG/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-windows-static"
+=======
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+        "VCPKG_CRT_LINKAGE": "static"
+>>>>>>> source-b/renderer
       }
     },
     {

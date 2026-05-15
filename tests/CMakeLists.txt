@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -23,3 +24,20 @@ target_link_libraries(unit_tests
 
 include(GoogleTest)
 gtest_discover_tests(unit_tests)
+=======
+find_package(GTest CONFIG REQUIRED)
+
+add_executable(3fishTests
+  test_websocket_parser.cpp
+  test_rest_parser.cpp
+)
+
+target_link_libraries(3fishTests PRIVATE
+  GTest::gtest
+  GTest::gtest_main
+  3fishCore
+)
+
+include(GoogleTest)
+gtest_discover_tests(3fishTests)
+>>>>>>> source-b/renderer
