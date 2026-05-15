@@ -9,8 +9,12 @@
     "openssl",
     "simdjson",
     "implot",
-    "sdl3",
+    {
+      "name": "sdl3",
+      "features": [ "vulkan" ]
+    },
     "vulkan",
+    "vk-bootstrap",
     {
       "name": "imgui",
       "features": [

@@ -155,6 +155,7 @@ void Engine::run() {
     }
     cpuRelax();
   }
+  std::cout << "Engine down\n";
 }
 
 void Engine::handleOrderbookMismatch() {

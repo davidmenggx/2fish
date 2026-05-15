@@ -113,6 +113,9 @@ void WebsocketClient::run() {
 
       ws.read(rx_buffer, error_code);
 
+      if (error_code == boost::asio::error::timed_out)
+        continue;
+
       if (error_code) {
         std::cerr << "CRITICAL: Read error: " << error_code.message() << '\n';
         // TODO: Try a reconnect here
@@ -135,6 +138,7 @@ void WebsocketClient::run() {
 
       parser_.parseAndPush(padded_data);
     }
+    std::cout << "Websocket client down\n";
   } catch (const std::exception &e) {
     std::cerr << std::format(
         "CRITICAL: Unexpected error in websocket client: {}\n", e.what());

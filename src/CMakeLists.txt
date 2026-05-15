@@ -33,6 +33,12 @@ add_library(3fishCore STATIC
   network/websocket/websocket_client.cpp
   network/websocket/websocket_parser.hpp
   network/websocket/websocket_parser.cpp
+  renderer/application.hpp
+  renderer/application.cpp
+  renderer/component/component.hpp
+  renderer/component/component_manager.hpp
+  renderer/component/component_manager.cpp
+  
 )
 
 target_include_directories(3fishCore PUBLIC 
@@ -50,6 +56,7 @@ target_link_libraries(3fishCore PUBLIC
   SDL3::SDL3-static
   imgui::imgui
   implot::implot
+  vk-bootstrap::vk-bootstrap
 )
 
 if(WIN32)

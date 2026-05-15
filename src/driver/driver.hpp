@@ -5,6 +5,7 @@
 #include "config.hpp"
 #include "engine/engine.hpp"
 #include "network/websocket/websocket_client.hpp"
+#include "renderer/application.hpp"
 
 #include "moodycamel/readerwriterqueue.h"
 
@@ -23,4 +24,5 @@ private:
 
   Engine engine_;
   WebsocketClient websocket_client_;
+  Application application_;
 };
