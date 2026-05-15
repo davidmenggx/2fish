@@ -38,7 +38,10 @@ add_library(3fishCore STATIC
   renderer/component/component.hpp
   renderer/component/component_manager.hpp
   renderer/component/component_manager.cpp
-  
+  renderer/component/chart_view.hpp
+  renderer/component/chart_view.cpp
+  renderer/component/orderbook_view.hpp
+  renderer/component/orderbook_view.cpp
 )
 
 target_include_directories(3fishCore PUBLIC 
