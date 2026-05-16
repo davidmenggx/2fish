@@ -7,11 +7,12 @@
 #include "store/candlestick_store.hpp"
 #include "store/orderbook_store.hpp"
 
-#include "moodycamel/readerwriterqueue.h"
 #include "moodycamel/concurrentqueue.h"
+#include "moodycamel/readerwriterqueue.h"
 
 #include <atomic>
 #include <cstdint>
+#include <optional>
 #include <thread>
 
 class Engine {
@@ -20,6 +21,16 @@ public:
          Config config, std::atomic<bool> &running);
 
   void start();
+
+  [[nodiscard]] std::optional<OrderbookStoreSnapshot>
+  getOrderbookSnapshot(int64_t query_timestamp_ms, Side side) {
+    return orderbook_store_.get(query_timestamp_ms, side);
+  }
+
+  [[nodiscard]] std::optional<CandlestickStoreSnapshot>
+  getCandlestick(int64_t query_timestamp_ms, Side side) {
+    return candlestick_store_.get(query_timestamp_ms, side);
+  }
 
 private:
   void run();
@@ -34,7 +45,7 @@ private:
 
   moodycamel::ReaderWriterQueue<WebsocketMessage> &websocket_queue_;
   moodycamel::ConcurrentQueue<RestMessage> rest_patch_queue_;
-  moodycamel::ConcurrentQueue<RestMessage> rest_query_queue_; 
+  moodycamel::ConcurrentQueue<RestMessage> rest_query_queue_;
 
   OrderbookStore orderbook_store_{};
   CandlestickStore candlestick_store_;

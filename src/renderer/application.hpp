@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/engine.hpp"
 #include "component/component_manager.hpp"
 
 #include <SDL3/SDL.h>
@@ -26,7 +27,7 @@ struct FrameData {
 
 class Application {
 public:
-  Application(std::atomic<bool> &running);
+  Application(Engine &engine, std::atomic<bool> &running);
   ~Application();
 
   void run();
@@ -36,6 +37,8 @@ private:
   void createFramebuffers();
   void createCommandAndSyncObjects();
   void recreateSwapchain();
+
+  Engine &engine_;
 
   SDL_Window *window_{nullptr};
 

@@ -40,8 +40,8 @@ add_library(2fishCore STATIC
   renderer/component/component_manager.cpp
   renderer/component/chart_view.hpp
   renderer/component/chart_view.cpp
-  renderer/component/orderbook_view.hpp
-  renderer/component/orderbook_view.cpp
+  renderer/component/orderbook_levels.hpp
+  renderer/component/orderbook_levels.cpp
 )
 
 target_include_directories(2fishCore PUBLIC 
@@ -69,3 +69,5 @@ endif()
 
 add_executable(2fish main.cpp)
 target_link_libraries(2fish PRIVATE 2fishCore)
+
+file(COPY ${CMAKE_SOURCE_DIR}/assets DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

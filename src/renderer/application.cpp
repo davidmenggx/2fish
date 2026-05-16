@@ -1,4 +1,6 @@
 #include "application.hpp"
+#include "component/orderbook_levels.hpp"
+#include "engine/engine.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -13,9 +15,11 @@
 #include <cstdint>
 #include <format>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 
-Application::Application(std::atomic<bool> &running) : running_{running} {
+Application::Application(Engine &engine, std::atomic<bool> &running)
+    : engine_{engine}, running_{running} {
   if (!SDL_Init(SDL_INIT_VIDEO))
     throw std::runtime_error(
         std::format("Could not initialize SDL: {}", SDL_GetError()));
@@ -65,6 +69,8 @@ Application::Application(std::atomic<bool> &running) : running_{running} {
       vkb_device_.get_queue_index(vkb::QueueType::graphics).value();
 
   vkb::SwapchainBuilder swapchain_builder{vkb_device_};
+  swapchain_builder.set_desired_format(VkSurfaceFormatKHR{
+      VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR});
   auto swap_ret = swapchain_builder.build();
   if (!swap_ret)
     throw std::runtime_error("Failed to create Swapchain");
@@ -121,7 +127,10 @@ Application::Application(std::atomic<bool> &running) : running_{running} {
   init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
   ImGui_ImplVulkan_Init(&init_info);
 
-  // TODO: Fonts
+  io.Fonts->AddFontFromFileTTF("assets/fonts/JetBrainsMono-Regular.ttf", 24.0f);
+
+  // Testing for now
+  component_manager_.addComponent(std::make_unique<OrderbookLevels>(engine_));
 }
 
 Application::~Application() {
@@ -296,7 +305,10 @@ void Application::recreateSwapchain() {
 
   vkb::SwapchainBuilder swapchain_builder{vkb_device_};
   auto vkb_swapchain_ret =
-      swapchain_builder.set_old_swapchain(vkb_swapchain_).build();
+      swapchain_builder.set_old_swapchain(vkb_swapchain_)
+          .set_desired_format(VkSurfaceFormatKHR{
+              VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR})
+          .build();
 
   if (!vkb_swapchain_ret)
     throw std::runtime_error("Failed to recreate swapchain");
@@ -366,9 +378,7 @@ void Application::run() {
 
     ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
 
-    // TODO: The actual ui here, just demos for now
-    ImGui::ShowDemoWindow();
-    ImPlot::ShowDemoWindow();
+    component_manager_.drawAll();
 
     ImGui::Render();
     ImDrawData *draw_data{ImGui::GetDrawData()};

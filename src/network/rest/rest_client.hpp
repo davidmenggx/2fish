@@ -29,15 +29,15 @@ public:
   void get(const std::string &host, const std::string &target);
 
 private:
+  net::io_context ioc_;
+  ssl::context ctx_;
+
   RestParser parser_;
 
   // Thread safe connection pool
   std::unique_ptr<ObjectPool<std::shared_ptr<HttpsSession>,
                              constants::HTTPS_SESSION_POOL_SIZE>>
       connection_pool_{nullptr};
-
-  net::io_context ioc_;
-  ssl::context ctx_;
 
   net::executor_work_guard<net::io_context::executor_type> work_guard_;
   std::vector<std::thread> threads_;
