@@ -32,6 +32,10 @@ public:
     return candlestick_store_.get(query_timestamp_ms, side);
   }
 
+  [[nodiscard]] std::optional<TradeMessageWs> getFirstTrade() {
+    return candlestick_store_.getFirstTrade();
+  }
+
 private:
   void run();
 

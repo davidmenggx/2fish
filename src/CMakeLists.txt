@@ -3,12 +3,14 @@ add_library(2fishCore STATIC
   common/containers/object_pool.hpp
   common/containers/ring_buffer.hpp
   common/containers/seqlock_wrapper.hpp
+  common/containers/simple_deque.hpp
   common/containers/swmr_map.hpp
   common/core/rest_data_types.hpp
   common/core/types.hpp
   common/core/websocket_data_types.hpp
   common/utils/compute_time_bucket.hpp
   common/utils/cpu_relax.hpp
+  common/utils/format_with_commas.hpp
   common/utils/parse_json_double.hpp
   common/utils/price_round.hpp
   common/utils/set_query_params.hpp
@@ -43,6 +45,8 @@ add_library(2fishCore STATIC
   renderer/component/chart_view.cpp
   renderer/component/orderbook_levels.hpp
   renderer/component/orderbook_levels.cpp
+  renderer/component/trade_ledger.hpp
+  renderer/component/trade_ledger.cpp
   renderer/component/widgets/button.hpp
   renderer/component/widgets/button.cpp
 )

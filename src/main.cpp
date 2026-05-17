@@ -8,7 +8,7 @@
 int main() {
   Config config{};
   config.series_ticker_ = "KXBTCD";
-  config.market_ticker_ = "KXBTCD-26MAY1623-T77899.99";
+  config.market_ticker_ = "KXBTCD-26MAY1717-T77999.99";
 
   Driver driver{config};
   try {

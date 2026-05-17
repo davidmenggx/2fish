@@ -37,7 +37,9 @@ CandlestickStore::CandlestickStore(
       rest_client_{rest_query_queue},
       candlestick_fetch_history_{std::make_unique<
           SwmrMap<int64_t, int64_t, constants::PAST_MESSAGE_LOOKUP_SIZE>>()},
-      config_{config} {
+      config_{config},
+      trade_ledger_{std::make_unique<
+          Deque<TradeMessageWs, constants::TRADE_LEDGER_CAPACITY>>()} {
   auto now = std::chrono::system_clock::now();
   auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                     now.time_since_epoch())
@@ -181,6 +183,10 @@ CandlestickStore::get(int64_t query_timestamp_ms, Side side) {
   }
 
   return std::nullopt;
+}
+
+[[nodiscard]] std::optional<TradeMessageWs> CandlestickStore::getFirstTrade() {
+  return trade_ledger_->pop_front();
 }
 
 void CandlestickStore::tryPatch(RestMessage &message) {

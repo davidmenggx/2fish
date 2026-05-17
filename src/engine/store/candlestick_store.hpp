@@ -38,6 +38,8 @@ public:
   [[nodiscard]] std::optional<CandlestickStoreSnapshot>
   get(int64_t query_timestamp_ms, Side side);
 
+  [[nodiscard]] std::optional<TradeMessageWs> getFirstTrade();
+
   // Repair internal data state in the event of a sequence ID mismatch.
   void tryPatch(RestMessage &message);
 

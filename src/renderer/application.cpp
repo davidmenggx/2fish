@@ -1,5 +1,6 @@
 #include "application.hpp"
 #include "component/orderbook_levels.hpp"
+#include "component/trade_ledger.hpp"
 #include "engine/engine.hpp"
 
 #include <SDL3/SDL.h>
@@ -131,6 +132,7 @@ Application::Application(Engine &engine, std::atomic<bool> &running)
 
   // Testing for now
   component_manager_.addComponent(std::make_unique<OrderbookLevels>(engine_));
+  component_manager_.addComponent(std::make_unique<TradeLedger>(engine_));
 }
 
 Application::~Application() {

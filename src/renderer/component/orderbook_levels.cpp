@@ -1,3 +1,4 @@
+#include "common/utils/format_with_commas.hpp"
 #include "orderbook_levels.hpp"
 #include "common/core/types.hpp"
 #include "engine/engine.hpp"
@@ -9,25 +10,6 @@
 #include <cstdio>
 #include <string>
 #include <utility>
-
-static std::string formatWithCommas(long double value) {
-  char buf[64];
-  snprintf(buf, sizeof(buf), "%.2Lf", value);
-  std::string str(buf);
-
-  std::size_t dot_pos{str.find('.')};
-  if (dot_pos == std::string::npos)
-    dot_pos = str.length();
-
-  int insert_count{0};
-  for (int i{static_cast<int>(dot_pos) - 3}; i > 0; i -= 3) {
-    if (str[i - 1] == '-')
-      break;
-
-    str.insert(i, ",");
-  }
-  return str;
-}
 
 OrderbookLevels::OrderbookLevels(Engine &engine)
     : engine_{engine},
