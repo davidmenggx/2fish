@@ -38,8 +38,8 @@ TEST(WebsocketParserTest, ParsesValidOrderbookSnapshot) {
       << "Message body is not an OrderbookSnapshotMessageWs";
 
   OrderbookSnapshotMessageWs expected{};
-  expected.market_ticker_ = "TEST";
-  expected.market_id_ = "test-id";
+  expected.set_market_ticker("TEST");
+  expected.set_market_id("test-id");
 
   expected.yes_dollars_[1] = 183.48;
   expected.yes_dollars_[5] = 1.00;
@@ -78,8 +78,8 @@ TEST(WebsocketParserTest, ParsesValidOrderbookDelta) {
       << "Message body is not an OrderbookDeltaMessageWs";
 
   OrderbookDeltaMessageWs expected{};
-  expected.market_ticker_ = "TEST";
-  expected.market_id_ = "test-id";
+  expected.set_market_ticker("TEST");
+  expected.set_market_id("test-id");
   expected.price_cents_ = 4;
   expected.delta_ = -0.05;
   expected.side_ = Side::No;
@@ -113,8 +113,8 @@ TEST(WebsocketParserTest, ParsesValidTrade) {
       << "Message body is not an TradeMessageWs";
 
   TradeMessageWs expected{};
-  expected.trade_id_ = "test-id";
-  expected.market_ticker_ = "TEST";
+  expected.set_market_ticker("TEST");
+  expected.set_trade_id("test-id");
   expected.yes_price_cents_ = 86;
   expected.no_price_cents_ = 14;
   expected.contracts_traded_ = 100.00;

@@ -1,4 +1,5 @@
 add_library(2fishCore STATIC
+  common/containers/deque.hpp
   common/containers/object_pool.hpp
   common/containers/ring_buffer.hpp
   common/containers/seqlock_wrapper.hpp

@@ -66,10 +66,10 @@ WebsocketParser::parseOrderbookSnapshot(simdjson::ondemand::object &msg) {
 
     if (key == "market_ticker") {
       std::string_view ticker_sv = field.value().get_string();
-      snapshot.market_ticker_ = ticker_sv;
+      snapshot.set_market_ticker(ticker_sv);
     } else if (key == "market_id") {
       std::string_view id_sv = field.value().get_string();
-      snapshot.market_id_ = id_sv;
+      snapshot.set_market_id(id_sv);
     } else if (key == "yes_dollars_fp" || key == "no_dollars_fp") {
       bool is_yes = (key == "yes_dollars_fp");
       auto &dollars_array =
@@ -103,10 +103,10 @@ WebsocketParser::parseOrderbookDelta(simdjson::ondemand::object &msg) {
 
     if (key == "market_ticker") {
       std::string_view ticker_sv = field.value().get_string();
-      delta.market_ticker_ = ticker_sv;
+      delta.set_market_ticker(ticker_sv);
     } else if (key == "market_id") {
       std::string_view id_sv = field.value().get_string();
-      delta.market_id_ = id_sv;
+      delta.set_market_id(id_sv);
     } else if (key == "ts_ms") {
       delta.timestamp_ms_ = field.value().get_int64();
     } else if (key == "price_dollars") {
@@ -129,12 +129,12 @@ TradeMessageWs WebsocketParser::parseTrade(simdjson::ondemand::object &msg) {
 
     if (key == "market_ticker") {
       std::string_view ticker_sv = field.value().get_string();
-      trade.market_ticker_ = ticker_sv;
+      trade.set_market_ticker(ticker_sv);
     } else if (key == "ts_ms") {
       trade.timestamp_ms_ = field.value().get_int64();
     } else if (key == "trade_id") {
       std::string_view trade_id_sv = field.value().get_string();
-      trade.trade_id_ = trade_id_sv;
+      trade.set_trade_id(trade_id_sv);
     } else if (key == "yes_price_dollars") {
       double price = parseJsonDouble(field.value().get_string());
       trade.yes_price_cents_ = priceRound(price * 100.0);

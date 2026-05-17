@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/containers/deque.hpp"
 #include "common/containers/seqlock_wrapper.hpp"
 #include "common/containers/swmr_map.hpp"
 #include "common/core/rest_data_types.hpp"
@@ -83,4 +84,7 @@ private:
   RestClient rest_client_;
 
   const Config config_;
+
+  std::unique_ptr<Deque<TradeMessageWs, constants::TRADE_LEDGER_CAPACITY>>
+      trade_ledger_;
 };

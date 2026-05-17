@@ -11,6 +11,7 @@ inline constexpr std::size_t CANDLESTICK_HISTORY_GRANULARITY_MS{60'000};
 // Market data capacity
 inline constexpr std::size_t ORDERBOOK_HISTORY_STEPS{262'144};
 inline constexpr std::size_t CANDLESTICK_HISTORY_STEPS{512};
+inline constexpr std::size_t TRADE_LEDGER_CAPACITY{1'024};
 
 // Engine settings
 inline constexpr uint64_t ENGINE_DEAD_SPIN{2'048};
@@ -24,6 +25,9 @@ inline constexpr std::size_t HTTPS_SESSION_POOL_SIZE{64};
 // Other
 inline constexpr std::size_t CACHE_LINE_SIZE{
     std::hardware_destructive_interference_size};
+
+// Kalshi specific
+inline constexpr std::size_t MAX_ID_LENGTH_CHARS{200};
 } // namespace constants
 
 static_assert((constants::ENGINE_DEAD_SPIN &

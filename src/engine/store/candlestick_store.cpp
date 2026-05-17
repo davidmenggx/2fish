@@ -65,6 +65,8 @@ CandlestickStore::recordTradeMessageWs(WebsocketMessage &message) {
 
   ++last_message_seq_;
 
+  trade_ledger_->push_back(*message_body);
+
   auto update_candlestick = [message_body](CandlestickStoreSnapshot &store,
                                            uint8_t price_cents) {
     if (message_body->timestamp_ms_ < store.start_timestamp_ms_)

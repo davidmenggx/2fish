@@ -19,9 +19,8 @@ template <typename T, std::size_t Capacity> class RingBuffer {
 
 public:
   void push(const T &item) {
-    if (writer_lock_.test_and_set(std::memory_order_acquire)) {
+    if (writer_lock_.test_and_set(std::memory_order_acquire))
       throw std::logic_error("Violation of single-writer");
-    }
 
     std::size_t seq{seq_.load(std::memory_order_relaxed)};
     seq_.store(seq + 1, std::memory_order_relaxed);
@@ -29,9 +28,8 @@ public:
     std::atomic_thread_fence(std::memory_order_release);
 
     data_[head_ & mask_] = item;
-    if ((head_ - tail_) == Capacity) {
+    if ((head_ - tail_) == Capacity)
       ++tail_;
-    }
     ++head_;
 
     seq_.store(seq + 2, std::memory_order_release);
@@ -47,11 +45,10 @@ public:
       seq0 = seq_.load(std::memory_order_acquire);
 
       if (seq0 & 1) {
-        if (spin_count < 10) {
+        if (spin_count < 10)
           cpuRelax();
-        } else {
+        else
           std::this_thread::yield();
-        }
         continue;
       }
 
@@ -62,9 +59,8 @@ public:
 
       if (index >= (current_head - current_tail)) {
         std::atomic_thread_fence(std::memory_order_acquire);
-        if (seq0 != seq_.load(std::memory_order_relaxed)) {
+        if (seq0 != seq_.load(std::memory_order_relaxed))
           continue;
-        }
         return std::nullopt;
       }
 
@@ -89,11 +85,10 @@ public:
       seq0 = seq_.load(std::memory_order_acquire);
 
       if (seq0 & 1) {
-        if (spin_count < 10) {
+        if (spin_count < 10)
           cpuRelax();
-        } else {
+        else
           std::this_thread::yield();
-        }
         continue;
       }
 
