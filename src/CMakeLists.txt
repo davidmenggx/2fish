@@ -48,6 +48,8 @@ add_library(2fishCore STATIC
   renderer/component/orderbook_levels.cpp
   renderer/component/trade_ledger.hpp
   renderer/component/trade_ledger.cpp
+  renderer/component/market_depth.hpp
+  renderer/component/market_depth.cpp
   renderer/component/widgets/button.hpp
   renderer/component/widgets/button.cpp
 )
