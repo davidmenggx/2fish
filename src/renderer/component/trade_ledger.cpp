@@ -2,11 +2,13 @@
 #include "common/core/types.hpp"
 #include "common/utils/format_with_commas.hpp"
 #include "engine/engine.hpp"
+#include "renderer/theme.hpp"
 
 #include "imgui.h"
 
 #include <chrono>
 #include <format>
+#include <string>
 
 TradeLedger::TradeLedger(Engine &engine) : engine_{engine} {}
 
@@ -81,6 +83,10 @@ void TradeLedger::draw() {
           ImGui::SetTooltip("%s", it->trade_id_.c_str());
 
         ImGui::TableNextColumn();
+        if (it->taker_side_ == Side::No)
+          ImGui::PushStyleColor(ImGuiCol_Text, theme::RED_FOCUSED);
+        else
+          ImGui::PushStyleColor(ImGuiCol_Text, theme::GREEN_FOCUSED);
         ImGui::Text("%s", sideToString(it->taker_side_).c_str());
 
         ImGui::TableNextColumn();
@@ -88,6 +94,7 @@ void TradeLedger::draw() {
           ImGui::Text("%i\u00A2", it->no_price_cents_);
         else
           ImGui::Text("%i\u00A2", it->yes_price_cents_);
+        ImGui::PopStyleColor();
 
         ImGui::TableNextColumn();
         ImGui::Text("%s", formatWithCommas(it->contracts_traded_).c_str());
@@ -97,7 +104,6 @@ void TradeLedger::draw() {
             std::chrono::milliseconds(it->timestamp_ms_)};
 
         std::string formatted_time = std::format("{:%Y-%m-%d %H:%M:%S}", tp);
-
         ImGui::TextUnformatted(formatted_time.c_str());
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip("%s", formatted_time.c_str());

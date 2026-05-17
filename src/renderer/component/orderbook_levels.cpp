@@ -1,13 +1,14 @@
-#include "common/utils/format_with_commas.hpp"
 #include "orderbook_levels.hpp"
 #include "common/core/types.hpp"
+#include "common/utils/format_with_commas.hpp"
 #include "engine/engine.hpp"
+#include "renderer/theme.hpp"
 
 #include "imgui.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
-#include <cstdio>
 #include <string>
 #include <utility>
 
@@ -19,7 +20,9 @@ OrderbookLevels::OrderbookLevels(Engine &engine)
               is_stacked_view_ = !is_stacked_view_;
               initial_scroll_ = true;
             }},
-           {"Recenter Orderbook", [this] { initial_scroll_ = true; }}}} {
+           {"Recenter Orderbook", [this] { initial_scroll_ = true; }},
+           {"Toggle Compressed Levels",
+            [this] { is_compressed_levels_ = !is_compressed_levels_; }}}} {
   yes_dollar_diff_.fill(-1);
   no_dollar_diff_.fill(-1);
 }
@@ -47,26 +50,33 @@ void OrderbookLevels::draw() {
   if (ImGui::Begin(getId().c_str(), &is_open_)) {
     long double max_volume{0.0};
     int top_yes_price{-1};
+    int max_no_index{-1};
 
+    // Single-pass optimization to replace multiple redundant loops
     for (int p{0}; p <= 100; ++p) {
       if (yes_dollars_[p] > max_volume)
         max_volume = yes_dollars_[p];
       if (no_dollars_[p] > max_volume)
         max_volume = no_dollars_[p];
 
-      // Find the highest price level with volume on the Yes side
-      if (yes_dollars_[p] > 0) {
-        top_yes_price = std::max(top_yes_price, p);
-      }
+      if (yes_dollars_[p] > 0)
+        top_yes_price = p;
+      if (no_dollars_[p] > 0)
+        max_no_index = p;
     }
 
     if (max_volume == 0.0)
       max_volume = 1.0;
+
+    int highest_bid_price = top_yes_price;
+    int lowest_ask_price = (max_no_index != -1) ? (100 - max_no_index) : -1;
+
     if (top_yes_price == -1)
       top_yes_price = 50; // Fallback center
 
     if (is_stacked_view_)
-      drawStackedView(max_volume, top_yes_price);
+      drawStackedView(max_volume, top_yes_price, lowest_ask_price,
+                      highest_bid_price);
     else
       drawHorizontalView(max_volume, top_yes_price);
 
@@ -79,8 +89,9 @@ void OrderbookLevels::draw() {
   std::copy(no_dollars_.begin(), no_dollars_.end(), no_dollar_diff_.begin());
 }
 
-void OrderbookLevels::drawStackedView(long double max_volume,
-                                      int top_yes_price) {
+void OrderbookLevels::drawStackedView(long double max_volume, int top_yes_price,
+                                      int lowest_ask_price,
+                                      int highest_bid_price) {
   if (ImGui::BeginTable("##OrderbookLevels", 3, ImGuiTableFlags_ScrollY,
                         ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()))) {
     ImGui::TableSetupScrollFreeze(0, 1);
@@ -98,7 +109,7 @@ void OrderbookLevels::drawStackedView(long double max_volume,
         ImGui::TableHeader("##Price");
         ImGui::SameLine();
         ImGui::SetCursorPosX(cursor_x + (col_width - text_width) * 0.5f);
-        ImGui::Text("Price");
+        ImGui::TextUnformatted("Price");
       } else if (column == 2) {
         float text_width{ImGui::CalcTextSize("Volume").x};
         float cursor_x{ImGui::GetCursorPosX()};
@@ -106,33 +117,29 @@ void OrderbookLevels::drawStackedView(long double max_volume,
         ImGui::TableHeader("##Volume");
         ImGui::SameLine();
         ImGui::SetCursorPosX(cursor_x + (col_width - text_width));
-        ImGui::Text("Volume");
+        ImGui::TextUnformatted("Volume");
       } else {
         ImGui::TableHeader("##Side");
       }
     }
 
+    // Cache strings to avoid excessive allocations
+    static const std::array<std::string, 101> price_strings = []() {
+      std::array<std::string, 101> arr;
+      for (int i = 0; i <= 100; ++i) {
+        arr[i] = std::to_string(i) + "\u00A2";
+      }
+      return arr;
+    }();
+
     ImDrawList *draw_list = ImGui::GetWindowDrawList();
-
-    int lowest_ask_price{-1};
-    for (int p{0}; p <= 100; ++p) {
-      if (no_dollars_[100 - p] > 0) {
-        lowest_ask_price = p;
-        break;
-      }
-    }
-
-    int highest_bid_price{-1};
-    for (int p{100}; p >= 0; --p) {
-      if (yes_dollars_[p] > 0) {
-        highest_bid_price = p;
-        break;
-      }
-    }
 
     for (int p{100}; p >= 0; --p) {
       long double ask_vol = no_dollars_[100 - p];
       long double bid_vol = yes_dollars_[p];
+
+      if (is_compressed_levels_ && ask_vol <= 0.0 && bid_vol <= 0.0)
+        continue;
 
       ImGui::TableNextRow();
 
@@ -153,11 +160,11 @@ void OrderbookLevels::drawStackedView(long double max_volume,
         ImVec2 bar_min(bar_start_x, row_y1);
         ImVec2 bar_max(bar_start_x + (ratio * table_width * 0.8f),
                        row_y2 - 1.0f);
-        draw_list->AddRectFilled(bar_min, bar_max, IM_COL32(255, 91, 122, 45));
+        draw_list->AddRectFilled(bar_min, bar_max, theme::RED_UNFOCUSED);
 
         if (p == lowest_ask_price) {
-          ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 91, 122, 255));
-          ImGui::Text("Asks");
+          ImGui::PushStyleColor(ImGuiCol_Text, theme::RED_FOCUSED);
+          ImGui::TextUnformatted("Asks");
           ImGui::PopStyleColor();
         }
       } else if (bid_vol > 0) {
@@ -165,36 +172,32 @@ void OrderbookLevels::drawStackedView(long double max_volume,
         ImVec2 bar_min(bar_start_x, row_y1);
         ImVec2 bar_max(bar_start_x + (ratio * table_width * 0.8f),
                        row_y2 - 1.0f);
-        draw_list->AddRectFilled(bar_min, bar_max, IM_COL32(0, 200, 129, 45));
+        draw_list->AddRectFilled(bar_min, bar_max, theme::GREEN_UNFOCUSED);
 
         if (p == highest_bid_price) {
-          ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 200, 129, 255));
-          ImGui::Text("Bids");
+          ImGui::PushStyleColor(ImGuiCol_Text, theme::GREEN_FOCUSED);
+          ImGui::TextUnformatted("Bids");
           ImGui::PopStyleColor();
         }
       }
 
       ImGui::TableSetColumnIndex(1);
-      std::string price_str = std::to_string(p) + "\u00A2";
+      const std::string &price_str = price_strings[p];
       float text_width{ImGui::CalcTextSize(price_str.c_str()).x};
       float col_width{ImGui::GetColumnWidth()};
       ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
                            (col_width - text_width) * 0.5f);
 
       if (ask_vol > 0) {
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 91, 122, 255));
-        ImGui::Text("%s", price_str.c_str());
-        ImGui::PopStyleColor();
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::RED_FOCUSED);
       } else if (bid_vol > 0) {
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 200, 129, 255));
-        ImGui::Text("%s", price_str.c_str());
-        ImGui::PopStyleColor();
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::GREEN_FOCUSED);
       } else {
         ImGui::PushStyleColor(ImGuiCol_Text,
                               ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::Text("%s", price_str.c_str());
-        ImGui::PopStyleColor();
       }
+      ImGui::TextUnformatted(price_str.c_str());
+      ImGui::PopStyleColor();
 
       ImGui::TableSetColumnIndex(2);
       if (ask_vol > 0) {
@@ -204,7 +207,7 @@ void OrderbookLevels::drawStackedView(long double max_volume,
         float vol_col_width{ImGui::GetColumnWidth()};
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
                              (vol_col_width - vol_width));
-        ImGui::Text("%s", vol_str.c_str());
+        ImGui::TextUnformatted(vol_str.c_str());
         ImGui::PopStyleColor();
       } else if (bid_vol > 0) {
         applyUpdateHighlights(p, true);
@@ -213,7 +216,7 @@ void OrderbookLevels::drawStackedView(long double max_volume,
         float vol_col_width{ImGui::GetColumnWidth()};
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
                              (vol_col_width - vol_width));
-        ImGui::Text("%s", vol_str.c_str());
+        ImGui::TextUnformatted(vol_str.c_str());
         ImGui::PopStyleColor();
       }
     }
@@ -223,7 +226,6 @@ void OrderbookLevels::drawStackedView(long double max_volume,
 
 void OrderbookLevels::drawHorizontalView(long double max_volume,
                                          int top_yes_price) {
-  // TODO: There are some weird gaps in the horizontal bars, check this out
   if (ImGui::BeginTable("##OrderbookLevels", 3,
                         ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersInnerV,
                         ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()))) {
@@ -245,7 +247,7 @@ void OrderbookLevels::drawHorizontalView(long double max_volume,
         ImGui::TableHeader("##Price");
         ImGui::SameLine();
         ImGui::SetCursorPosX(cursor_x + (col_width - text_width) * 0.5f);
-        ImGui::Text("Price");
+        ImGui::TextUnformatted("Price");
       } else if (column == 2) {
         float text_width{ImGui::CalcTextSize("No Bid Volume").x};
         float cursor_x{ImGui::GetCursorPosX()};
@@ -253,15 +255,29 @@ void OrderbookLevels::drawHorizontalView(long double max_volume,
         ImGui::TableHeader("##NoBidVolume");
         ImGui::SameLine();
         ImGui::SetCursorPosX(cursor_x + (col_width - text_width));
-        ImGui::Text("No Bid Volume");
+        ImGui::TextUnformatted("No Bid Volume");
       } else {
         ImGui::TableHeader("Yes Bid Volume");
       }
     }
 
+    static const std::array<std::string, 101> price_strings = []() {
+      std::array<std::string, 101> arr;
+      for (int i = 0; i <= 100; ++i) {
+        arr[i] = std::to_string(i) + "\u00A2";
+      }
+      return arr;
+    }();
+
     ImDrawList *draw_list = ImGui::GetWindowDrawList();
 
     for (int p{100}; p >= 0; --p) {
+      long double yes_vol = yes_dollars_[p];
+      long double no_vol = no_dollars_[p];
+
+      if (is_compressed_levels_ && yes_vol <= 0.0 && no_vol <= 0.0)
+        continue;
+
       ImGui::TableNextRow();
 
       if (initial_scroll_ && p == top_yes_price) {
@@ -282,45 +298,46 @@ void OrderbookLevels::drawHorizontalView(long double max_volume,
       float no_start_x{ImGui::GetCursorScreenPos().x};
       float no_col_width{ImGui::GetColumnWidth()};
 
-      float yes_ratio{static_cast<float>(yes_dollars_[p] / max_volume)};
-      float no_ratio{static_cast<float>(no_dollars_[p] / max_volume)};
+      float yes_ratio{static_cast<float>(yes_vol / max_volume)};
+      float no_ratio{static_cast<float>(no_vol / max_volume)};
 
       if (yes_ratio > 0.0f) {
         ImVec2 yes_min(yes_end_x - (yes_ratio * yes_col_width), row_y1);
         ImVec2 yes_max(yes_end_x, row_y2 - 1.0f);
-        draw_list->AddRectFilled(yes_min, yes_max, IM_COL32(0, 200, 129, 45));
+        draw_list->AddRectFilled(yes_min, yes_max, theme::GREEN_UNFOCUSED);
       }
 
       if (no_ratio > 0.0f) {
         ImVec2 no_min(no_start_x, row_y1);
         ImVec2 no_max(no_start_x + (no_ratio * no_col_width), row_y2 - 1.0f);
-        draw_list->AddRectFilled(no_min, no_max, IM_COL32(255, 91, 122, 45));
+        draw_list->AddRectFilled(no_min, no_max, theme::RED_UNFOCUSED);
       }
 
       ImGui::TableSetColumnIndex(0);
-      if (yes_dollars_[p] > 0) {
+      if (yes_vol > 0) {
         applyUpdateHighlights(p, true);
-        ImGui::Text("%s", formatWithCommas(yes_dollars_[p]).c_str());
+        ImGui::TextUnformatted(formatWithCommas(yes_vol).c_str());
         ImGui::PopStyleColor();
       }
 
       ImGui::TableSetColumnIndex(1);
-      std::string price_str = std::to_string(p) + "\u00A2";
+      const std::string &price_str = price_strings[p];
       float text_width{ImGui::CalcTextSize(price_str.c_str()).x};
       float col_width{ImGui::GetColumnWidth()};
       ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
                            (col_width - text_width) * 0.5f);
-      ImGui::Text("%s", price_str.c_str());
+      ImGui::TextUnformatted(price_str.c_str());
 
       ImGui::TableSetColumnIndex(2);
-      if (no_dollars_[p] > 0) {
-        std::string no_vol_str = formatWithCommas(no_dollars_[p]);
-        float text_width{ImGui::CalcTextSize(no_vol_str.c_str()).x};
-        float col_width{ImGui::GetColumnWidth()};
+      if (no_vol > 0) {
+        std::string no_vol_str = formatWithCommas(no_vol);
+        float vol_text_width{ImGui::CalcTextSize(no_vol_str.c_str()).x};
+        float col_width_no{ImGui::GetColumnWidth()};
 
         applyUpdateHighlights(p, false);
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (col_width - text_width));
-        ImGui::Text("%s", no_vol_str.c_str());
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
+                             (col_width_no - vol_text_width));
+        ImGui::TextUnformatted(no_vol_str.c_str());
         ImGui::PopStyleColor();
       }
     }

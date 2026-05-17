@@ -21,7 +21,8 @@ private:
   // Two different view formats: display "Yes" and "No" markets
   // horizontally or reflect the "No" market bids as asks for the
   // "Yes" market
-  void drawStackedView(long double max_volume, int top_yes_price);
+  void drawStackedView(long double max_volume, int top_yes_price,
+                       int lowest_ask_price, int highest_bid_price);
   void drawHorizontalView(long double max_volume, int top_yes_price);
 
   Engine &engine_;
@@ -41,5 +42,6 @@ private:
   ButtonRow orderbook_levels_buttons_{};
 
   bool is_stacked_view_{true};
+  bool is_compressed_levels_{false};
   bool initial_scroll_{true}; // If true, enter the user to the top of the book
 };

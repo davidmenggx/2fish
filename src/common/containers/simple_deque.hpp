@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstddef>
 #include <iterator>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -128,54 +129,64 @@ public:
 
   // Modifiers
   void push_back(const T &value) {
-    assert(!full() && "Deque is full");
+    if (full())
+      pop_front();
     data_[tail_ & Mask] = value;
     ++tail_;
   }
 
   void push_back(T &&value) {
-    assert(!full() && "Deque is full");
+    if (full())
+      pop_front();
     data_[tail_ & Mask] = std::move(value);
     ++tail_;
   }
 
   void push_front(const T &value) {
-    assert(!full() && "Deque is full");
+    if (full())
+      pop_back();
     --head_; // Relies on unsigned underflow wrapping around
     data_[head_ & Mask] = value;
   }
 
   void push_front(T &&value) {
-    assert(!full() && "Deque is full");
+    if (full())
+      pop_back();
     --head_;
     data_[head_ & Mask] = std::move(value);
   }
 
   void pop_back() {
-    assert(!empty() && "Deque is empty");
+    if (empty())
+      return;
     --tail_;
   }
 
   void pop_front() {
-    assert(!empty() && "Deque is empty");
+    if (empty())
+      return;
     ++head_;
   }
 
-  T &front() {
-    assert(!empty());
+  std::optional<T> &front() {
+    if (empty())
+      return std::nullopt;
     return data_[head_ & Mask];
   }
-  const T &front() const {
-    assert(!empty());
+  const std::optional<T> &front() const {
+    if (empty())
+      return std::nullopt;
     return data_[head_ & Mask];
   }
 
-  T &back() {
-    assert(!empty());
+  std::optional<T> &back() {
+    if (empty())
+      return std::nullopt;
     return data_[(tail_ - 1) & Mask];
   }
-  const T &back() const {
-    assert(!empty());
+  const std::optional<T> &back() const {
+    if (empty())
+      return std::nullopt;
     return data_[(tail_ - 1) & Mask];
   }
 

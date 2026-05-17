@@ -38,6 +38,7 @@ add_library(2fishCore STATIC
   network/websocket/websocket_parser.cpp
   renderer/application.hpp
   renderer/application.cpp
+  renderer/theme.hpp
   renderer/component/component.hpp
   renderer/component/component_manager.hpp
   renderer/component/component_manager.cpp

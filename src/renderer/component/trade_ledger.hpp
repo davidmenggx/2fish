@@ -1,11 +1,12 @@
 #pragma once
 
 #include "common/containers/simple_deque.hpp"
+#include "common/core/types.hpp"
 #include "component.hpp"
 #include "engine/engine.hpp"
 
-#include <string>
 #include <cstdint>
+#include <string>
 
 struct TradeLedgerItem {
   std::string market_ticker_{};
