@@ -86,60 +86,6 @@ void Engine::run() {
       empty_spin_count = 0;
     }
 
-    // TESTING START
-
-    auto now = std::chrono::system_clock::now();
-    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      now.time_since_epoch())
-                      .count();
-    std::optional<CandlestickStoreSnapshot> result{
-        candlestick_store_.get(now_ms, Side::Yes)};
-
-    std::cout << "Live feed:" << std::endl;
-    if (!result) {
-      std::cout << "No data found or invalid state" << std::endl;
-    } else {
-      std::cout << "Got data:" << std::endl;
-      std::cout << "Timestamp: " << result->start_timestamp_ms_ << std::endl;
-      std::cout << "Open: " << +result->open_ << ". High: " << +result->high_
-                << ". Low: " << +result->low_ << ". Close: " << +result->close_
-                << "\n\n";
-    }
-
-    std::optional<CandlestickStoreSnapshot> trailing_1m_result{
-        candlestick_store_.get(now_ms - 60'000, Side::Yes)};
-    std::cout << "\n\nTrailing 1m:" << std::endl;
-    if (!trailing_1m_result) {
-      std::cout << "No data found or invalid state" << std::endl;
-    } else {
-      std::cout << "Got data:" << std::endl;
-      std::cout << "Timestamp: " << trailing_1m_result->start_timestamp_ms_
-                << std::endl;
-      std::cout << "Open: " << +trailing_1m_result->open_
-                << ". High: " << +trailing_1m_result->high_
-                << ". Low: " << +trailing_1m_result->low_
-                << ". Close: " << +trailing_1m_result->close_ << "\n\n";
-    }
-
-    std::optional<CandlestickStoreSnapshot> trailing_2m_result{
-        candlestick_store_.get(now_ms - 120'000, Side::Yes)};
-    std::cout << "\n\nTrailing 2m:" << std::endl;
-    if (!trailing_2m_result) {
-      std::cout << "No data found or invalid state" << std::endl;
-    } else {
-      std::cout << "Got data:" << std::endl;
-      std::cout << "Timestamp: " << trailing_2m_result->start_timestamp_ms_
-                << std::endl;
-      std::cout << "Open: " << +trailing_2m_result->open_
-                << ". High: " << +trailing_2m_result->high_
-                << ". Low: " << +trailing_2m_result->low_
-                << ". Close: " << +trailing_2m_result->close_ << "\n\n";
-    }
-
-    system("cls");
-
-    // TESTING END
-
     ++empty_spin_count;
 
     // In case the market goes silent, periodically force a write on the

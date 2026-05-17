@@ -42,6 +42,8 @@ add_library(2fishCore STATIC
   renderer/component/chart_view.cpp
   renderer/component/orderbook_levels.hpp
   renderer/component/orderbook_levels.cpp
+  renderer/component/widgets/button.hpp
+  renderer/component/widgets/button.cpp
 )
 
 target_include_directories(2fishCore PUBLIC 
