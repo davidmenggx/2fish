@@ -23,8 +23,12 @@ inline constexpr std::size_t PAST_MESSAGE_LOOKUP_SIZE{1'024};
 inline constexpr std::size_t HTTPS_SESSION_POOL_SIZE{64};
 
 // Other
-inline constexpr std::size_t CACHE_LINE_SIZE{
-    std::hardware_destructive_interference_size};
+#if defined(__cpp_lib_hardware_interference_size)
+inline constexpr std::size_t CACHE_LINE_SIZE =
+    std::hardware_destructive_interference_size;
+#else
+inline constexpr std::size_t CACHE_LINE_SIZE = 64;
+#endif
 
 // Kalshi specific
 inline constexpr std::size_t MAX_ID_LENGTH_CHARS{200};
