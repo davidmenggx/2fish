@@ -36,13 +36,13 @@ void HttpsSession::run(const std::string &host, const std::string &port,
 
   req_.keep_alive(true);
 
-  const char *api_key_env = std::getenv("3FISH_KALSHI_API_KEY");
+  const char *api_key_env = std::getenv("TWO_FISH_KALSHI_API_KEY");
   if (!api_key_env)
     throw std::runtime_error("CRITICAL: API Key environment variable not set");
 
   std::string signing_ts{getSigningTimestampMs()};
   std::string rest_msg_to_sign{signing_ts + "GET" + target};
-  const char *api_key_path = std::getenv("3FISH_KALSHI_API_PRIVATE_KEY_PATH");
+  const char *api_key_path = std::getenv("TWO_FISH_KALSHI_API_PRIVATE_KEY_PATH");
   if (!api_key_path)
     throw std::runtime_error(
         "CRITICAL: API Key Path environment variable not set");

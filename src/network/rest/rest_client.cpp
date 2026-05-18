@@ -32,7 +32,7 @@ RestClient::RestClient(
   ctx_.set_default_verify_paths(default_ec);
 
   // Fallback for Windows
-  const char *ca_cert_path = std::getenv("3FISH_CACERT_PATH");
+  const char *ca_cert_path = std::getenv("TWO_FISH_CACERT_PATH");
   if (ca_cert_path) {
     boost::system::error_code ec;
     ctx_.load_verify_file(ca_cert_path, ec);

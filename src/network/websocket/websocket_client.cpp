@@ -51,7 +51,7 @@ void WebsocketClient::run() {
     // Kalshi websocket payload
     std::string signing_ts{getSigningTimestampMs()};
     std::string websocket_msg_to_sign{signing_ts + "GET" + websocket_target};
-    const char *api_key_path = std::getenv("3FISH_KALSHI_API_PRIVATE_KEY_PATH");
+    const char *api_key_path = std::getenv("TWO_FISH_KALSHI_API_PRIVATE_KEY_PATH");
     if (!api_key_path) {
       throw std::runtime_error(
           "CRITICAL: API Key Path environment variable not set");
@@ -77,7 +77,7 @@ void WebsocketClient::run() {
 
     ws.next_layer().handshake(ssl::stream_base::client);
 
-    const char *api_key_env = std::getenv("3FISH_KALSHI_API_KEY");
+    const char *api_key_env = std::getenv("TWO_FISH_KALSHI_API_KEY");
     if (!api_key_env) {
       throw std::runtime_error(
           "CRITICAL: API Key environment variable not set");
