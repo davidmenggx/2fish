@@ -20,8 +20,6 @@
 #include <string>
 #include <variant>
 
-#include <iostream>
-
 CandlestickStore::CandlestickStore(
     moodycamel::ConcurrentQueue<RestMessage> &rest_query_queue, Config config)
     : yes_live_candlestick_{std::make_unique<
@@ -254,8 +252,6 @@ void CandlestickStore::tryPatch(RestMessage &message) {
   last_valid_timestamp_ms_.store(last_valid_timestamp_ms,
                                  std::memory_order_release);
   invalid_state_.store(false, std::memory_order_release);
-
-  std::cout << "Applied a candlestick patch\n";
 }
 
 void CandlestickStore::tryFetchHistoricalCandlestick(int64_t query_timestamp_ms,
@@ -294,7 +290,6 @@ void CandlestickStore::tryFetchHistoricalCandlestick(int64_t query_timestamp_ms,
 }
 
 void CandlestickStore::tryStoreHistorical(RestMessage &message) {
-  std::cout << "A historical try store initialized\n";
   CandlestickMessageRest *message_body{
       std::get_if<CandlestickMessageRest>(&message.body_)};
   if (!message_body)

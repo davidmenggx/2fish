@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/core/rest_data_types.hpp"
+#include "common/core/types.hpp"
 #include "common/core/websocket_data_types.hpp"
 #include "config.hpp"
 #include "network/rest/rest_client.hpp"

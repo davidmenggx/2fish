@@ -1,4 +1,5 @@
 #include "application.hpp"
+#include "component/chart_view.hpp"
 #include "component/market_depth.hpp"
 #include "component/orderbook_levels.hpp"
 #include "component/trade_ledger.hpp"
@@ -135,6 +136,7 @@ Application::Application(Engine &engine, std::atomic<bool> &running)
   component_manager_.addComponent(std::make_unique<OrderbookLevels>(engine_));
   component_manager_.addComponent(std::make_unique<TradeLedger>(engine_));
   component_manager_.addComponent(std::make_unique<MarketDepth>(engine_));
+  component_manager_.addComponent(std::make_unique<ChartView>(engine_));
 }
 
 Application::~Application() {
